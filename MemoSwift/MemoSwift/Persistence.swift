@@ -16,7 +16,7 @@ class PersistenceController {
         let result = PersistenceController(inMemory: true)
         let viewContext = result.container.viewContext
         
-        // 创建示例文件夹
+        // 创建根文件夹
         let workFolder = Folder(context: viewContext)
         workFolder.id = UUID()
         workFolder.name = "工作"
@@ -27,8 +27,27 @@ class PersistenceController {
         personalFolder.name = "个人"
         personalFolder.createdAt = Date()
         
-        // 创建示例笔记
-        for i in 1...5 {
+        // 创建子文件夹
+        let projectsFolder = Folder(context: viewContext)
+        projectsFolder.id = UUID()
+        projectsFolder.name = "项目"
+        projectsFolder.createdAt = Date()
+        projectsFolder.parentFolder = workFolder
+        
+        let meetingsFolder = Folder(context: viewContext)
+        meetingsFolder.id = UUID()
+        meetingsFolder.name = "会议"
+        meetingsFolder.createdAt = Date()
+        meetingsFolder.parentFolder = workFolder
+        
+        let travelFolder = Folder(context: viewContext)
+        travelFolder.id = UUID()
+        travelFolder.name = "旅行"
+        travelFolder.createdAt = Date()
+        travelFolder.parentFolder = personalFolder
+        
+        // 创建示例笔记 - 工作文件夹
+        for i in 1...3 {
             let newNote = Note(context: viewContext)
             newNote.id = UUID()
             newNote.title = "工作笔记 \(i)"
@@ -38,7 +57,30 @@ class PersistenceController {
             newNote.folder = workFolder
         }
         
-        for i in 1...3 {
+        // 项目子文件夹的笔记
+        for i in 1...2 {
+            let newNote = Note(context: viewContext)
+            newNote.id = UUID()
+            newNote.title = "项目笔记 \(i)"
+            newNote.content = "项目笔记 \(i) 的详细内容"
+            newNote.createdAt = Date()
+            newNote.updatedAt = Date()
+            newNote.folder = projectsFolder
+        }
+        
+        // 会议子文件夹的笔记
+        for i in 1...2 {
+            let newNote = Note(context: viewContext)
+            newNote.id = UUID()
+            newNote.title = "会议记录 \(i)"
+            newNote.content = "会议记录 \(i) 的详细内容"
+            newNote.createdAt = Date()
+            newNote.updatedAt = Date()
+            newNote.folder = meetingsFolder
+        }
+        
+        // 个人文件夹的笔记
+        for i in 1...2 {
             let newNote = Note(context: viewContext)
             newNote.id = UUID()
             newNote.title = "个人笔记 \(i)"
@@ -46,6 +88,17 @@ class PersistenceController {
             newNote.createdAt = Date()
             newNote.updatedAt = Date()
             newNote.folder = personalFolder
+        }
+        
+        // 旅行子文件夹的笔记
+        for i in 1...2 {
+            let newNote = Note(context: viewContext)
+            newNote.id = UUID()
+            newNote.title = "旅行计划 \(i)"
+            newNote.content = "旅行计划 \(i) 的详细内容"
+            newNote.createdAt = Date()
+            newNote.updatedAt = Date()
+            newNote.folder = travelFolder
         }
         
         do {
@@ -120,7 +173,7 @@ class PersistenceController {
             noteUpdatedAtAttribute.attributeType = .dateAttributeType
             noteUpdatedAtAttribute.isOptional = true
             
-            // 创建关系
+            // 创建笔记到文件夹的关系
             let notesToFolderRelationship = NSRelationshipDescription()
             notesToFolderRelationship.name = "folder"
             notesToFolderRelationship.destinationEntity = folderEntity
@@ -134,13 +187,34 @@ class PersistenceController {
             folderToNotesRelationship.isOptional = true
             folderToNotesRelationship.deleteRule = .cascadeDeleteRule
             
-            // 设置反向关系
+            // 创建文件夹的父子关系
+            let childToParentRelationship = NSRelationshipDescription()
+            childToParentRelationship.name = "parentFolder"
+            childToParentRelationship.destinationEntity = folderEntity
+            childToParentRelationship.isOptional = true
+            childToParentRelationship.deleteRule = .nullifyDeleteRule
+            childToParentRelationship.maxCount = 1
+            
+            let parentToChildrenRelationship = NSRelationshipDescription()
+            parentToChildrenRelationship.name = "childFolders"
+            parentToChildrenRelationship.destinationEntity = folderEntity
+            parentToChildrenRelationship.isOptional = true
+            parentToChildrenRelationship.deleteRule = .cascadeDeleteRule
+            
+            // 设置笔记和文件夹的反向关系
             notesToFolderRelationship.inverseRelationship = folderToNotesRelationship
             folderToNotesRelationship.inverseRelationship = notesToFolderRelationship
             
+            // 设置文件夹父子的反向关系
+            childToParentRelationship.inverseRelationship = parentToChildrenRelationship
+            parentToChildrenRelationship.inverseRelationship = childToParentRelationship
+            
+            // 设置实体的属性
             noteEntity.properties = [noteIdAttribute, noteTitleAttribute, noteContentAttribute, 
                                      noteCreatedAtAttribute, noteUpdatedAtAttribute, notesToFolderRelationship]
-            folderEntity.properties.append(folderToNotesRelationship)
+            
+            folderEntity.properties = [folderIdAttribute, folderNameAttribute, folderCreatedAtAttribute, 
+                                      folderToNotesRelationship, childToParentRelationship, parentToChildrenRelationship]
             
             // 创建模型
             model = NSManagedObjectModel()

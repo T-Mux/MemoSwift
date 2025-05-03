@@ -56,7 +56,6 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // First column: Folders
             FolderListView(
-                folders: folders, 
                 folderViewModel: folderViewModel
             )
         } content: {
@@ -152,11 +151,32 @@ struct ErrorView: View {
 }
 
 struct FolderListView: View {
-    let folders: FetchedResults<Folder>
+    @FetchRequest(
+        fetchRequest: Folder.allFoldersFetchRequest(),
+        animation: .default
+    ) private var rootFolders: FetchedResults<Folder>
+    
     @ObservedObject var folderViewModel: FolderViewModel
     
     @State private var showAddFolder = false
     @State private var newFolderName = ""
+    @State private var createInCurrentFolder = false // 是否在当前选中的文件夹中创建
+    @Environment(\.managedObjectContext) private var viewContext
+    
+    // 重命名相关状态
+    @State private var showRenameDialog = false
+    @State private var folderToRename: Folder? = nil
+    @State private var renamedFolderName = ""
+    
+    // 移动相关状态
+    @State private var showMoveDialog = false
+    @State private var folderToMove: Folder? = nil
+    @State private var targetFolders: [Folder] = []
+    @State private var selectedTargetFolder: Folder? = nil
+    
+    // 删除确认状态
+    @State private var showDeleteConfirmation = false
+    @State private var folderToDelete: Folder? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -169,9 +189,23 @@ struct FolderListView: View {
                 
                 Spacer()
                 
-                Button(action: {
-                    showAddFolder = true
-                }) {
+                Menu {
+                    Button(action: {
+                        createInCurrentFolder = false
+                        showAddFolder = true
+                    }) {
+                        Label("创建根文件夹", systemImage: "folder.badge.plus")
+                    }
+                    
+                    if let selectedFolder = folderViewModel.selectedFolder {
+                        Button(action: {
+                            createInCurrentFolder = true
+                            showAddFolder = true
+                        }) {
+                            Label("在 \"\(selectedFolder.name)\" 中创建", systemImage: "folder.fill.badge.plus")
+                        }
+                    }
+                } label: {
                     Image(systemName: "folder.badge.plus")
                         .font(.title3)
                         .foregroundColor(.blue)
@@ -185,46 +219,273 @@ struct FolderListView: View {
             
             // 文件夹列表
             List(selection: $folderViewModel.selectedFolder) {
-                ForEach(folders) { folder in
-                    FolderRow(folder: folder)
-                        .tag(folder)
+                ForEach(rootFolders) { folder in
+                    FolderRowWithChildren(
+                        folder: folder,
+                        folderViewModel: folderViewModel,
+                        onRename: {
+                            folderToRename = folder
+                            renamedFolderName = folder.name
+                            showRenameDialog = true
+                        },
+                        onMove: {
+                            folderToMove = folder
+                            targetFolders = folderViewModel.getAvailableTargetFolders(forFolder: folder)
+                            selectedTargetFolder = nil
+                            showMoveDialog = true
+                        },
+                        onDelete: {
+                            folderToDelete = folder
+                            showDeleteConfirmation = true
+                        }
+                    )
                 }
                 .onDelete(perform: deleteFolder)
             }
             .listStyle(PlainListStyle())
+            .onChange(of: folderViewModel.folderUpdated) { _, _ in
+                // 刷新视图
+                viewContext.refreshAllObjects()
+            }
         }
-        .alert("新建文件夹", isPresented: $showAddFolder) {
+        // 新建文件夹对话框
+        .alert(createInCurrentFolder ? "新建子文件夹" : "新建文件夹", isPresented: $showAddFolder) {
             TextField("名称", text: $newFolderName)
             Button("取消", role: .cancel) {
                 newFolderName = ""
             }
             Button("创建") {
                 if !newFolderName.isEmpty {
-                    folderViewModel.createFolder(name: newFolderName)
+                    if createInCurrentFolder, let parentFolder = folderViewModel.selectedFolder {
+                        folderViewModel.createFolder(name: newFolderName, parentFolder: parentFolder)
+                    } else {
+                        folderViewModel.createFolder(name: newFolderName)
+                    }
                     newFolderName = ""
                 }
+            }
+        } message: {
+            if createInCurrentFolder, let selectedFolder = folderViewModel.selectedFolder {
+                Text("在文件夹 \"\(selectedFolder.name)\" 中创建新文件夹")
+            }
+        }
+        // 重命名文件夹对话框
+        .alert("重命名文件夹", isPresented: $showRenameDialog) {
+            TextField("名称", text: $renamedFolderName)
+            Button("取消", role: .cancel) { }
+            Button("重命名") {
+                if let folder = folderToRename, !renamedFolderName.isEmpty {
+                    folderViewModel.renameFolder(folder: folder, newName: renamedFolderName)
+                }
+            }
+        }
+        // 移动文件夹对话框
+        .sheet(isPresented: $showMoveDialog) {
+            MoveTargetSelectionView(
+                folderToMove: folderToMove,
+                availableTargets: targetFolders,
+                selectedTarget: $selectedTargetFolder,
+                onCancel: { showMoveDialog = false },
+                onConfirm: {
+                    if let folder = folderToMove {
+                        folderViewModel.moveFolder(folder: folder, toParent: selectedTargetFolder)
+                        showMoveDialog = false
+                    }
+                }
+            )
+        }
+        // 删除确认对话框
+        .alert("确认删除", isPresented: $showDeleteConfirmation) {
+            Button("取消", role: .cancel) { }
+            Button("删除", role: .destructive) {
+                if let folder = folderToDelete {
+                    folderViewModel.deleteFolder(folder: folder)
+                }
+            }
+        } message: {
+            if let folder = folderToDelete {
+                Text("确定要删除文件夹 \"\(folder.name)\" 及其所有内容吗？此操作无法撤销。")
             }
         }
     }
     
     private func deleteFolder(at offsets: IndexSet) {
         for index in offsets {
-            folderViewModel.deleteFolder(folder: folders[index])
+            folderViewModel.deleteFolder(folder: rootFolders[index])
         }
-    }
-    
-    // 日期格式化器
-    private var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .none
-        return formatter
     }
 }
 
-// 文件夹行视图组件
+// 带子文件夹的文件夹行组件
+private struct FolderRowWithChildren: View {
+    @ObservedObject var folder: Folder
+    let folderViewModel: FolderViewModel
+    var onRename: () -> Void
+    var onMove: () -> Void
+    var onDelete: () -> Void
+    
+    @State private var isExpanded = false
+    @State private var isShowingMenu = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 主文件夹行
+            HStack(spacing: 5) {
+                // 展开/折叠按钮（仅当有子文件夹时显示）
+                Group {
+                    if folder.childFoldersArray.count > 0 {
+                        Button(action: {
+                            withAnimation {
+                                isExpanded.toggle()
+                            }
+                        }) {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                    } else {
+                        // 为没有子文件夹的行添加灰色圆点
+                        Circle()
+                            .fill(Color.gray.opacity(0.5))
+                            .frame(width: 4, height: 4)
+                    }
+                }
+                .frame(width: 15, alignment: .center)
+                
+                // 文件夹图标
+                Image(systemName: "folder.fill")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                    .frame(width: 25, alignment: .center)
+                
+                // 文件夹名称和信息
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(folder.name)
+                        .font(.headline)
+                    
+                    HStack {
+                        Text("\(folder.notesArray.count) 条笔记")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        if let createdDate = folder.createdAt {
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Text(formatDate(createdDate))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Spacer(minLength: 8)
+                
+                // 子文件夹指示器
+                if folder.childFoldersArray.count > 0 {
+                    Text("\(folder.childFoldersArray.count)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color(.systemGray5))
+                        .cornerRadius(8)
+                        .padding(.trailing, 5)
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 5)
+            .background(folderViewModel.selectedFolder == folder ? Color(.systemGray6) : Color.clear)
+            .cornerRadius(6)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                folderViewModel.selectedFolder = folder
+            }
+            .contextMenu {
+                // 上下文菜单
+                Button(action: onRename) {
+                    Label("重命名", systemImage: "pencil")
+                }
+                
+                Button(action: onMove) {
+                    Label("移动", systemImage: "folder.fill.badge.plus")
+                }
+                
+                Divider()
+                
+                Button(role: .destructive, action: onDelete) {
+                    Label("删除", systemImage: "trash")
+                }
+            }
+            .onLongPressGesture {
+                // 触发菜单显示
+                isShowingMenu = true
+            }
+            
+            // 子文件夹（仅在展开状态显示）
+            if isExpanded && folder.childFoldersArray.count > 0 {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(folder.childFoldersArray) { childFolder in
+                        FolderRowWithChildren(
+                            folder: childFolder,
+                            folderViewModel: folderViewModel,
+                            onRename: {
+                                onRename()
+                            },
+                            onMove: {
+                                onMove()
+                            },
+                            onDelete: {
+                                onDelete()
+                            }
+                        )
+                        .padding(.leading, 22) // 精确的缩进以保持层次结构视觉一致
+                    }
+                }
+                .padding(.top, 1)
+                .padding(.bottom, 1)
+            }
+        }
+        .padding(.vertical, 1)
+        .actionSheet(isPresented: $isShowingMenu) {
+            ActionSheet(
+                title: Text("文件夹操作"),
+                message: Text("选择对文件夹 \"\(folder.name)\" 的操作"),
+                buttons: [
+                    .default(Text("重命名")) {
+                        onRename()
+                    },
+                    .default(Text("移动")) {
+                        onMove()
+                    },
+                    .destructive(Text("删除")) {
+                        onDelete()
+                    },
+                    .cancel(Text("取消"))
+                ]
+            )
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+}
+
+// 文件夹行视图组件 (保留用于其他部分的引用)
 private struct FolderRow: View {
     let folder: Folder
+    let folderViewModel: FolderViewModel
+    var onRename: () -> Void
+    var onMove: () -> Void
+    var onDelete: () -> Void
+    
+    @State private var isShowingMenu = false
     
     var body: some View {
         HStack(spacing: 12) {
@@ -255,9 +516,58 @@ private struct FolderRow: View {
             }
             
             Spacer()
+            
+            // 子文件夹指示器
+            if let childFolders = folder.childFolders, childFolders.count > 0 {
+                Text("\(childFolders.count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(.systemGray5))
+                    .cornerRadius(10)
+            }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle()) // 确保整行都可点击
+        .contextMenu {
+            // 上下文菜单
+            Button(action: onRename) {
+                Label("重命名", systemImage: "pencil")
+            }
+            
+            Button(action: onMove) {
+                Label("移动", systemImage: "folder.fill.badge.plus")
+            }
+            
+            Divider()
+            
+            Button(role: .destructive, action: onDelete) {
+                Label("删除", systemImage: "trash")
+            }
+        }
+        .onLongPressGesture {
+            // 触发菜单显示
+            isShowingMenu = true
+        }
+        .actionSheet(isPresented: $isShowingMenu) {
+            ActionSheet(
+                title: Text("文件夹操作"),
+                message: Text("选择对文件夹 \"\(folder.name)\" 的操作"),
+                buttons: [
+                    .default(Text("重命名")) {
+                        onRename()
+                    },
+                    .default(Text("移动")) {
+                        onMove()
+                    },
+                    .destructive(Text("删除")) {
+                        onDelete()
+                    },
+                    .cancel(Text("取消"))
+                ]
+            )
+        }
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -559,6 +869,108 @@ struct NoteEditorView: View {
             
             // 强制保存并刷新
             try? viewContext.save()
+        }
+    }
+}
+
+// 移动文件夹目标选择视图
+struct MoveTargetSelectionView: View {
+    let folderToMove: Folder?
+    let availableTargets: [Folder]
+    @Binding var selectedTarget: Folder?
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+    
+    @State private var searchText = ""
+    
+    var filteredFolders: [Folder] {
+        if searchText.isEmpty {
+            return availableTargets
+        } else {
+            return availableTargets.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                if availableTargets.isEmpty {
+                    VStack(spacing: 20) {
+                        Image(systemName: "folder.badge.questionmark")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        
+                        Text("没有可用的目标文件夹")
+                            .font(.headline)
+                        
+                        Button("移动到根目录") {
+                            selectedTarget = nil
+                            onConfirm()
+                        }
+                        .buttonStyle(.bordered)
+                        .padding()
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    List {
+                        // 根目录选项
+                        Button(action: {
+                            selectedTarget = nil
+                        }) {
+                            HStack {
+                                Image(systemName: "house")
+                                    .foregroundColor(.blue)
+                                Text("根目录")
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                if selectedTarget == nil {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+                        
+                        // 可用的目标文件夹
+                        ForEach(filteredFolders) { folder in
+                            Button(action: {
+                                selectedTarget = folder
+                            }) {
+                                HStack {
+                                    Image(systemName: "folder")
+                                        .foregroundColor(.blue)
+                                    Text(folder.name)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    if selectedTarget == folder {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .searchable(text: $searchText, prompt: "搜索文件夹")
+                }
+            }
+            .navigationTitle("选择目标文件夹")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        onCancel()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("确定") {
+                        onConfirm()
+                    }
+                }
+            }
         }
     }
 }
