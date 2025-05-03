@@ -8,12 +8,15 @@
 import Foundation
 import CoreData
 import SwiftUI
+import Combine
 
 class NoteViewModel: ObservableObject {
     private var viewContext: NSManagedObjectContext
     
     // 当前选中的笔记
     @Published var selectedNote: Note?
+    // 笔记更新触发器，用于通知列表视图刷新
+    @Published var noteUpdated = UUID()
     
     init(viewContext: NSManagedObjectContext) {
         self.viewContext = viewContext
@@ -31,16 +34,23 @@ class NoteViewModel: ObservableObject {
         newNote.folder = folder
         
         saveContext()
+        // 通知刷新
+        noteUpdated = UUID()
         return newNote
     }
     
     // 更新笔记内容
     func updateNote(note: Note, title: String, content: String) {
-        note.title = title
-        note.content = content
-        note.updatedAt = Date()
-        
-        saveContext()
+        // 只有当内容真正改变时才更新
+        if note.title != title || note.content != content {
+            note.title = title
+            note.content = content
+            note.updatedAt = Date()
+            
+            saveContext()
+            // 通知刷新
+            noteUpdated = UUID()
+        }
     }
     
     // 移动笔记到其他文件夹
@@ -49,6 +59,8 @@ class NoteViewModel: ObservableObject {
         note.updatedAt = Date()
         
         saveContext()
+        // 通知刷新
+        noteUpdated = UUID()
     }
     
     // 删除笔记
@@ -60,12 +72,22 @@ class NoteViewModel: ObservableObject {
         if selectedNote == note {
             selectedNote = nil
         }
+        
+        // 通知刷新
+        noteUpdated = UUID()
+    }
+    
+    // 强制刷新 - 可以从外部调用以刷新视图
+    func forceRefresh() {
+        noteUpdated = UUID()
     }
     
     // 保存上下文
     private func saveContext() {
         do {
-            try viewContext.save()
+            if viewContext.hasChanges {
+                try viewContext.save()
+            }
         } catch {
             let nsError = error as NSError
             print("保存上下文时出错: \(nsError), \(nsError.userInfo)")

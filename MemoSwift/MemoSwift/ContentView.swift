@@ -275,6 +275,7 @@ struct NoteListView: View {
     
     @FetchRequest private var notes: FetchedResults<Note>
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.managedObjectContext) private var viewContext
     
     init(folder: Folder, noteViewModel: NoteViewModel, onBack: @escaping () -> Void) {
         self.folder = folder
@@ -364,6 +365,7 @@ struct NoteListView: View {
                     ForEach(notes) { note in
                         NoteRow(note: note)
                             .tag(note)
+                            .id("\(note.id?.uuidString ?? "")-\(noteViewModel.noteUpdated)") // 使用noteUpdated触发刷新
                     }
                     .onDelete(perform: deleteNote)
                 }
@@ -371,6 +373,25 @@ struct NoteListView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            // 当视图出现时，重新获取数据
+            refreshData()
+        }
+        .onChange(of: noteViewModel.noteUpdated) { _, _ in
+            // 当笔记数据更新时，刷新列表
+            refreshData()
+        }
+    }
+    
+    // 刷新数据的函数
+    private func refreshData() {
+        // 刷新内存中的对象
+        viewContext.refreshAllObjects()
+        
+        // 创建新的FetchRequest
+        let fetchRequest = Note.fetchRequestForFolder(folder: folder)
+        notes.nsPredicate = fetchRequest.predicate
+        notes.nsSortDescriptors = fetchRequest.sortDescriptors ?? []
     }
     
     private func deleteNote(at offsets: IndexSet) {
@@ -382,16 +403,20 @@ struct NoteListView: View {
 
 // 笔记行视图组件
 private struct NoteRow: View {
-    let note: Note
+    // 使用ObservedObject而不是let，以便自动刷新
+    @ObservedObject var note: Note
+    @Environment(\.managedObjectContext) private var viewContext
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // 标题显示
             Text(note.wrappedTitle.isEmpty ? "无标题" : note.wrappedTitle)
                 .font(.headline)
                 .lineLimit(1)
             
             HStack(alignment: .top, spacing: 8) {
-                Text(note.wrappedContent.prefix(40).trimmingCharacters(in: .whitespacesAndNewlines))
+                // 内容预览
+                Text(note.wrappedContent.isEmpty ? "没有内容" : note.wrappedContent.prefix(40).trimmingCharacters(in: .whitespacesAndNewlines))
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -399,6 +424,7 @@ private struct NoteRow: View {
                 
                 Spacer()
                 
+                // 更新日期
                 Text(note.formattedDate)
                     .font(.caption)
                     .foregroundColor(.gray)
@@ -417,6 +443,8 @@ struct NoteEditorView: View {
     @State private var title: String
     @State private var content: String
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var debounceTimer: Timer?
     
     init(note: Note, noteViewModel: NoteViewModel, onBack: @escaping () -> Void) {
         self.note = note
@@ -432,7 +460,18 @@ struct NoteEditorView: View {
             // 顶部导航栏 - 与文件夹界面保持一致的设计
             HStack {
                 // 左侧：返回按钮
-                Button(action: onBack) {
+                Button(action: {
+                    // 返回前确保立即保存当前更改
+                    debounceTimer?.invalidate()
+                    saveChanges()
+                    
+                    // 确保数据更新前强制刷新
+                    viewContext.refreshAllObjects()
+                    noteViewModel.forceRefresh()
+                    
+                    // 返回上一级
+                    onBack()
+                }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.body)
@@ -471,12 +510,8 @@ struct NoteEditorView: View {
                 .font(.title3)
                 .padding()
                 .background(Color(.systemBackground))
-                .onChange(of: title) { oldValue, newValue in
-                    noteViewModel.updateNote(
-                        note: note,
-                        title: newValue,
-                        content: content
-                    )
+                .onChange(of: title) { _, _ in
+                    debounceSave()
                 }
             
             Divider()
@@ -486,15 +521,45 @@ struct NoteEditorView: View {
                 .padding(.horizontal)
                 .padding(.top, 8)
                 .background(Color(.systemBackground))
-                .onChange(of: content) { oldValue, newValue in
-                    noteViewModel.updateNote(
-                        note: note,
-                        title: title,
-                        content: newValue
-                    )
+                .onChange(of: content) { _, _ in
+                    debounceSave()
                 }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .onDisappear {
+            // 视图消失时，停止所有计时器并立即保存
+            debounceTimer?.invalidate()
+            saveChanges()
+            
+            // 强制刷新确保所有更改可见
+            noteViewModel.forceRefresh()
+        }
+    }
+    
+    // 延迟保存 - 使用计时器防抖
+    private func debounceSave() {
+        // 取消已有的计时器
+        debounceTimer?.invalidate()
+        
+        // 创建新的计时器，延迟0.5秒后保存（缩短延迟时间提高响应性）
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+            saveChanges()
+        }
+    }
+    
+    // 保存所有更改
+    private func saveChanges() {
+        // 仅当内容有变化时才更新
+        if note.title != title || note.content != content {
+            noteViewModel.updateNote(
+                note: note,
+                title: title,
+                content: content
+            )
+            
+            // 强制保存并刷新
+            try? viewContext.save()
+        }
     }
 }
 

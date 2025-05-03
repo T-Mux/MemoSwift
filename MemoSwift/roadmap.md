@@ -73,6 +73,13 @@ MemoSwift 是一款 iOS 备忘录应用，具有以下特点：
   - 改进了错误处理流程，不再使用 fatalError 导致应用崩溃
   - 优化了持久化存储配置
 
+### [2025-05-03]
+
+- 修复笔记实时预览的问题：
+  - 改进NoteListView，使用noteViewModel.noteUpdated作为列表行的ID部分，确保数据变化时视图能更新；添加了.onChange(of: noteViewModel.noteUpdated)监听器刷新数据；优化refreshData()方法来刷新FetchRequest
+  - 优化NoteRow组件，将note改为@ObservedObject以便自动刷新；改进了空内容的显示逻辑
+  - 增强了NoteEditorView，在返回按钮操作中添加了noteViewModel.forceRefresh()调用；在onDisappear时添加了强制刷新机制；使用计时器防抖技术优化自动保存逻辑，从1秒减少到0.5秒提高响应速度
+
 ### 接下来的任务
 - 实现笔记编辑器的文本格式化选项
 - 添加搜索功能
