@@ -243,30 +243,73 @@ struct FolderListView: View {
         VStack(spacing: 0) {
             // 顶部标题区域 - 使用ZStack确保标题居中
             ZStack {
-                // 居中标题
+                // 居中标题 - Files风格
                 if let selectedFolder = folderViewModel.selectedFolder {
                     // 添加点击操作，显示路径菜单
                     Button(action: {
                         showPathNavigationMenu = true
                     }) {
-                        HStack(spacing: 4) {
-                            Text(selectedFolder.name)
+                        HStack(spacing: 8) {
+                            // 文件夹图标
+                            Image(systemName: "folder.fill")
+                                .foregroundColor(.blue)
                                 .font(.headline)
-                                .fontWeight(.semibold)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
                             
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
+                            // 文件夹名称和信息
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 4) {
+                                    Text(selectedFolder.name)
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                // 子标题显示"文件夹"字样
+                                Text("文件夹 · \(selectedFolder.notesArray.count) 笔记")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
                         }
                     }
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity, alignment: .center)
                 } else {
-                    Text("文件夹")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    Button(action: {
+                        showPathNavigationMenu = true
+                    }) {
+                        HStack(spacing: 8) {
+                            // 文件夹图标
+                            Image(systemName: "folder.fill")
+                                .foregroundColor(.blue)
+                                .font(.headline)
+                            
+                            // 文件夹名称和信息
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 4) {
+                                    Text("文件夹")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .lineLimit(1)
+                                    
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                // 子标题显示"根目录"字样
+                                Text("根目录 · \(rootFolders.count) 文件夹")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                    }
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
                 
                 HStack {
@@ -443,45 +486,124 @@ struct FolderListView: View {
         }
         .environment(\.folderAction, folderAction)
         // 路径导航菜单
-        .actionSheet(isPresented: $showPathNavigationMenu) {
-            // 如果有选中的文件夹，显示路径导航菜单
-            if let selectedFolder = folderViewModel.selectedFolder {
-                let parentFolders = getParentFolders(for: selectedFolder)
-                
-                var buttons: [ActionSheet.Button] = []
-                
-                // 添加根目录按钮
-                buttons.append(.default(Text("返回根目录")) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        folderViewModel.selectedFolder = nil
-                    }
-                })
-                
-                // 添加所有父文件夹的按钮（从直接父级开始）
-                for parent in parentFolders.reversed() {
-                    buttons.append(.default(Text(parent.name)) {
+        .sheet(isPresented: $showPathNavigationMenu) {
+            NavigationView {
+                List {
+                    // 根目录选项
+                    Button(action: {
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            folderViewModel.selectedFolder = parent
+                            folderViewModel.selectedFolder = nil
+                            showPathNavigationMenu = false
                         }
-                    })
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "house.fill")
+                                .font(.title3)
+                                .foregroundColor(.blue)
+                                .frame(width: 25, height: 25)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("根目录")
+                                    .font(.headline)
+                                
+                                Text("\(rootFolders.count) 个文件夹")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            Spacer()
+                            
+                            if folderViewModel.selectedFolder == nil {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    if let selectedFolder = folderViewModel.selectedFolder {
+                        let parentFolders = getParentFolders(for: selectedFolder)
+                        
+                        if !parentFolders.isEmpty {
+                            Section(header: Text("上级文件夹").font(.caption).foregroundColor(.secondary)) {
+                                // 父文件夹列表 (按照层级顺序显示)
+                                ForEach(parentFolders.reversed(), id: \.id) { folder in
+                                    Button(action: {
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            folderViewModel.selectedFolder = folder
+                                            showPathNavigationMenu = false
+                                        }
+                                    }) {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: "folder.fill")
+                                                .font(.title3)
+                                                .foregroundColor(.blue)
+                                                .frame(width: 25, height: 25)
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(folder.name)
+                                                    .font(.headline)
+                                                
+                                                Text("\(folder.childFoldersArray.count) 个子文件夹")
+                                                    .font(.caption)
+                                                    .foregroundColor(.gray)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            if folder.id == folderViewModel.selectedFolder?.id {
+                                                Image(systemName: "checkmark")
+                                                    .foregroundColor(.blue)
+                                            }
+                                        }
+                                        .padding(.vertical, 4)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                        }
+                        
+                        // 当前文件夹
+                        Section(header: Text("当前位置").font(.caption).foregroundColor(.secondary)) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "folder.fill")
+                                    .font(.title3)
+                                    .foregroundColor(.blue)
+                                    .frame(width: 25, height: 25)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(selectedFolder.name)
+                                        .font(.headline)
+                                    
+                                    Text("\(selectedFolder.notesArray.count) 笔记")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.blue)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
                 }
-                
-                // 添加取消按钮
-                buttons.append(.cancel(Text("取消")))
-                
-                return ActionSheet(
-                    title: Text("导航到"),
-                    message: Text("选择要导航到的文件夹"),
-                    buttons: buttons
-                )
-            } else {
-                // 如果没有选中的文件夹，显示空的菜单
-                return ActionSheet(
-                    title: Text("导航到"),
-                    message: nil,
-                    buttons: [.cancel(Text("取消"))]
-                )
+                .listStyle(InsetGroupedListStyle())
+                .navigationTitle("选择位置")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("完成") {
+                            showPathNavigationMenu = false
+                        }
+                    }
+                }
             }
+            .background(Color(.systemGroupedBackground))
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         // 新建文件夹对话框
         .alert(createInCurrentFolder ? "新建子文件夹" : "新建文件夹", isPresented: $showAddFolder) {
