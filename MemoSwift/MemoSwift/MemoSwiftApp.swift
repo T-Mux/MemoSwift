@@ -19,6 +19,8 @@ struct MemoSwiftApp: App {
         // 设置全局错误处理
         setupGlobalErrorHandling()
         registerBackgroundTasks()
+        // 在App初始化时全局设置Alert按钮的颜色
+        UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor = .systemBlue
     }
 
     var body: some Scene {

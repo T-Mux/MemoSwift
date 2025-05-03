@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreData
+import UIKit
 
 // 添加环境值键，用于在组件间共享文件夹操作状态
 private struct FolderActionKey: EnvironmentKey {
@@ -331,7 +332,8 @@ struct FolderListView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
                             Button(action: {
-                                createInCurrentFolder = false
+                                // 修改为根据当前选中的文件夹状态设置 createInCurrentFolder
+                                createInCurrentFolder = folderViewModel.selectedFolder != nil
                                 showAddFolder = true
                                 showCreateMenu = false
                             }) {
@@ -340,7 +342,7 @@ struct FolderListView: View {
                                         .foregroundColor(.blue)
                                         .frame(width: 30)
                                     Text("新建文件夹")
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(.blue)
                                     Spacer()
                                 }
                                 .padding(.vertical, 14)
@@ -367,7 +369,7 @@ struct FolderListView: View {
                                             .foregroundColor(.blue)
                                             .frame(width: 30)
                                         Text("新建笔记")
-                                            .foregroundColor(.primary)
+                                            .foregroundColor(.blue)
                                         Spacer()
                                     }
                                     .padding(.vertical, 14)
@@ -502,6 +504,7 @@ struct FolderListView: View {
             Button("取消", role: .cancel) {
                 newFolderName = ""
             }
+            .tint(.blue)
             Button("创建") {
                 if !newFolderName.isEmpty {
                     if createInCurrentFolder, let parentFolder = folderViewModel.selectedFolder {
@@ -512,6 +515,7 @@ struct FolderListView: View {
                     newFolderName = ""
                 }
             }
+            .tint(.blue)
         } message: {
             if createInCurrentFolder, let selectedFolder = folderViewModel.selectedFolder {
                 Text("在文件夹 \"\(selectedFolder.name)\" 中创建新文件夹")
@@ -521,11 +525,13 @@ struct FolderListView: View {
         .alert("重命名文件夹", isPresented: $folderAction.showRenameDialog) {
             TextField("名称", text: $folderAction.renamedFolderName)
             Button("取消", role: .cancel) { }
+            .tint(.blue)
             Button("重命名") {
                 if let folder = folderAction.folderToRename, !folderAction.renamedFolderName.isEmpty {
                     folderViewModel.renameFolder(folder: folder, newName: folderAction.renamedFolderName)
                 }
             }
+            .tint(.blue)
         }
         // 移动文件夹对话框
         .sheet(isPresented: $folderAction.showMoveDialog) {
@@ -545,6 +551,7 @@ struct FolderListView: View {
         // 删除确认对话框
         .alert("确认删除", isPresented: $folderAction.showDeleteConfirmation) {
             Button("取消", role: .cancel) { }
+            .tint(.blue)
             Button("删除", role: .destructive) {
                 if let folder = folderAction.folderToDelete {
                     folderViewModel.deleteFolder(folder: folder)
@@ -897,6 +904,7 @@ private struct NoteRow: View {
         }
         .alert("确认删除", isPresented: $showDeleteConfirmation) {
             Button("取消", role: .cancel) { }
+            .tint(.blue)
             Button("删除", role: .destructive) {
                 noteViewModel.deleteNote(note: note)
             }
@@ -927,7 +935,7 @@ struct NoteMoveTargetSelectionView: View {
     
     // 获取所有文件夹
     @FetchRequest(
-        fetchRequest: Folder.fetchRequest(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \Folder.name, ascending: true)],
         animation: .default
     ) private var allFolders: FetchedResults<Folder>
     
