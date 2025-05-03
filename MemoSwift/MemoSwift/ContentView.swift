@@ -114,62 +114,72 @@ struct ContentView: View {
             }
         } content: {
             // Second column: Notes in selected folder
-            if let selectedFolder = folderViewModel.selectedFolder {
-                NoteListView(
-                    folder: selectedFolder,
-                    noteViewModel: noteViewModel,
-                    onBack: {
-                        // 返回文件夹列表
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            folderViewModel.selectedFolder = nil
-                            // 在iPhone上显示文件夹列表列
-                            columnVisibility = .all
+            Group {
+                if let selectedFolder = folderViewModel.selectedFolder {
+                    NoteListView(
+                        folder: selectedFolder,
+                        noteViewModel: noteViewModel,
+                        onBack: {
+                            // 返回文件夹列表
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                folderViewModel.selectedFolder = nil
+                                // 在iPhone上显示文件夹列表列
+                                columnVisibility = .all
+                            }
                         }
+                    )
+                    .transition(.opacity)
+                } else {
+                    VStack {
+                        Image(systemName: "folder.badge.questionmark")
+                            .font(.system(size: 50))
+                            .foregroundColor(.blue)
+                            .padding()
+                        
+                        Text("请选择一个文件夹")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
                     }
-                )
-            } else {
-                VStack {
-                    Image(systemName: "folder.badge.questionmark")
-                        .font(.system(size: 50))
-                        .foregroundColor(.blue)
-                        .padding()
-                    
-                    Text("请选择一个文件夹")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+                    .transition(.opacity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(.systemGroupedBackground))
             }
+            .animation(.easeInOut(duration: 0.3), value: folderViewModel.selectedFolder != nil)
         } detail: {
             // Third column: Note editor
-            if let selectedNote = noteViewModel.selectedNote {
-                NoteEditorView(
-                    note: selectedNote,
-                    noteViewModel: noteViewModel,
-                    onBack: {
-                        // 返回笔记列表
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            noteViewModel.selectedNote = nil
-                            // 在iPhone上恢复到上一列
-                            columnVisibility = .automatic
+            Group {
+                if let selectedNote = noteViewModel.selectedNote {
+                    NoteEditorView(
+                        note: selectedNote,
+                        noteViewModel: noteViewModel,
+                        onBack: {
+                            // 返回笔记列表
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                noteViewModel.selectedNote = nil
+                                // 在iPhone上恢复到上一列
+                                columnVisibility = .automatic
+                            }
                         }
+                    )
+                    .transition(.opacity)
+                } else {
+                    VStack {
+                        Image(systemName: "note.text.badge.plus")
+                            .font(.system(size: 50))
+                            .foregroundColor(.blue)
+                            .padding()
+                        
+                        Text("请选择或创建一条笔记")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
                     }
-                )
-            } else {
-                VStack {
-                    Image(systemName: "note.text.badge.plus")
-                        .font(.system(size: 50))
-                        .foregroundColor(.blue)
-                        .padding()
-                    
-                    Text("请选择或创建一条笔记")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemBackground))
+                    .transition(.opacity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(.systemBackground))
             }
+            .animation(.easeInOut(duration: 0.3), value: noteViewModel.selectedNote != nil)
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -230,55 +240,133 @@ struct FolderListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部标题区域
-            HStack {
-                Text("文件夹")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .padding(.leading)
-                
-                Spacer()
-                
-                // 新设计：展开下拉菜单按钮
-                Button(action: {
-                    showCreateMenu.toggle()
-                }) {
-                    Image(systemName: "plus")
-                        .font(.title3)
-                        .foregroundColor(.blue)
-                        .padding(8)
-                        .background(Color(.systemGray6))
-                        .clipShape(Circle())
+            // 顶部标题区域 - 使用ZStack确保标题居中
+            ZStack {
+                // 居中标题
+                if let selectedFolder = folderViewModel.selectedFolder {
+                    Text(selectedFolder.name)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    Text("文件夹")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .padding(.trailing)
-                .sheet(isPresented: $showCreateMenu) {
-                    // 底部弹出式菜单
-                    VStack(spacing: 0) {
-                        // 标题区域
-                        HStack {
-                            Spacer()
-                            Text("新建")
-                                .font(.headline)
-                                .padding()
-                            Spacer()
+                
+                HStack {
+                    // 根据是否有选中文件夹显示不同的左侧内容
+                    if let selectedFolder = folderViewModel.selectedFolder {
+                        // 显示返回按钮
+                        Button(action: {
+                            // 修改返回逻辑，返回到父文件夹而非根目录
+                            if let parentFolder = selectedFolder.parentFolder {
+                                // 如果有父文件夹，返回到父文件夹
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    folderViewModel.selectedFolder = parentFolder
+                                }
+                            } else {
+                                // 如果是根文件夹，才返回到根目录
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    folderViewModel.selectedFolder = nil
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(.body)
+                                Text(selectedFolder.parentFolder != nil ? selectedFolder.parentFolder!.name : "文件夹")
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .foregroundColor(.blue)
                         }
-                        .background(Color(.systemGray6))
-                        
-                        Divider()
-                        
-                        // 菜单项列表
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 0) {
+                        .padding(.leading)
+                        .frame(width: 100, alignment: .leading)
+                    } else {
+                        // 根目录状态，预留空间
+                        Spacer()
+                            .frame(width: 100)
+                    }
+                    
+                    Spacer()
+                    
+                    // 新设计：展开下拉菜单按钮
+                    Button(action: {
+                        showCreateMenu.toggle()
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                            .padding(8)
+                            .background(Color(.systemGray6))
+                            .clipShape(Circle())
+                    }
+                    .padding(.trailing)
+                    .frame(width: 100, alignment: .trailing)
+                }
+            }
+            .padding(.vertical, 10)
+            .background(Color(.systemBackground))
+            .sheet(isPresented: $showCreateMenu) {
+                // 底部弹出式菜单
+                VStack(spacing: 0) {
+                    // 标题区域
+                    HStack {
+                        Spacer()
+                        Text("新建")
+                            .font(.headline)
+                            .padding()
+                        Spacer()
+                    }
+                    .background(Color(.systemGray6))
+                    
+                    Divider()
+                    
+                    // 菜单项列表
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Button(action: {
+                                createInCurrentFolder = false
+                                showAddFolder = true
+                                showCreateMenu = false
+                            }) {
+                                HStack {
+                                    Image(systemName: "folder.badge.plus")
+                                        .foregroundColor(.blue)
+                                        .frame(width: 30)
+                                    Text("新建文件夹")
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 20)
+                                .contentShape(Rectangle())
+                            }
+                            
+                            Divider()
+                                .padding(.leading, 50)
+                            
+                            if let selectedFolder = folderViewModel.selectedFolder {
                                 Button(action: {
-                                    createInCurrentFolder = false
-                                    showAddFolder = true
+                                    // 创建新笔记并选中
+                                    let newNote = noteViewModel.createNote(
+                                        title: "",
+                                        content: "",
+                                        folder: selectedFolder
+                                    )
+                                    noteViewModel.selectedNote = newNote
                                     showCreateMenu = false
                                 }) {
                                     HStack {
-                                        Image(systemName: "folder.badge.plus")
+                                        Image(systemName: "note.text.badge.plus")
                                             .foregroundColor(.blue)
                                             .frame(width: 30)
-                                        Text("新建文件夹")
+                                        Text("新建笔记")
                                             .foregroundColor(.primary)
                                         Spacer()
                                     }
@@ -286,195 +374,128 @@ struct FolderListView: View {
                                     .padding(.horizontal, 20)
                                     .contentShape(Rectangle())
                                 }
-                                
-                                Divider()
-                                    .padding(.leading, 50)
-                                
-                                if let selectedFolder = folderViewModel.selectedFolder {
-                                    Button(action: {
-                                        // 创建新笔记并选中
-                                        let newNote = noteViewModel.createNote(
-                                            title: "",
-                                            content: "",
-                                            folder: selectedFolder
-                                        )
-                                        noteViewModel.selectedNote = newNote
-                                        showCreateMenu = false
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "note.text.badge.plus")
-                                                .foregroundColor(.blue)
-                                                .frame(width: 30)
-                                            Text("新建笔记")
-                                                .foregroundColor(.primary)
-                                            Spacer()
-                                        }
-                                        .padding(.vertical, 14)
-                                        .padding(.horizontal, 20)
-                                        .contentShape(Rectangle())
-                                    }
+                            }
+                        }
+                    }
+                    
+                    // 底部取消按钮
+                    Button(action: {
+                        showCreateMenu = false
+                    }) {
+                        Text("取消")
+                            .font(.headline)
+                            .foregroundColor(.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                    }
+                    .background(Color(.systemGray6))
+                    .padding(.top, 8)
+                }
+                .background(Color(.systemBackground))
+                .cornerRadius(15)
+                .presentationDetents([.height(folderViewModel.selectedFolder != nil ? 220 : 160)])
+                .presentationDragIndicator(.visible)
+            }
+        }
+        .padding(.vertical, 10)
+        .background(Color(.systemBackground))
+        
+        Divider()
+        
+        // 文件夹列表 - 修改为不展开的列表，点击直接进入
+        List {
+            // 如果有选中文件夹，则显示子文件夹和笔记
+            if let selectedFolder = folderViewModel.selectedFolder {
+                // 子文件夹区域
+                Section(header: Text("子文件夹").font(.subheadline).foregroundColor(.secondary)) {
+                    if selectedFolder.childFoldersArray.isEmpty {
+                        Text("没有子文件夹")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(selectedFolder.childFoldersArray) { folder in
+                            FolderRow(
+                                folder: folder,
+                                folderViewModel: folderViewModel,
+                                onRename: {
+                                    folderAction.setupRename(folder: folder)
+                                },
+                                onMove: {
+                                    folderAction.setupMove(
+                                        folder: folder,
+                                        availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
+                                    )
+                                },
+                                onDelete: {
+                                    folderAction.setupDelete(folder: folder)
+                                }
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    folderViewModel.selectedFolder = folder
                                 }
                             }
                         }
-                        
-                        // 底部取消按钮
-                        Button(action: {
-                            showCreateMenu = false
-                        }) {
-                            Text("取消")
-                                .font(.headline)
-                                .foregroundColor(.blue)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 15)
-                        }
-                        .background(Color(.systemGray6))
-                        .padding(.top, 8)
                     }
-                    .background(Color(.systemBackground))
-                    .cornerRadius(15)
-                    .presentationDetents([.height(folderViewModel.selectedFolder != nil ? 220 : 160)])
-                    .presentationDragIndicator(.visible)
                 }
-            }
-            .padding(.vertical, 10)
-            .background(Color(.systemBackground))
-            
-            Divider()
-            
-            // 文件夹列表 - 修改为不展开的列表，点击直接进入
-            List {
-                // 如果有选中文件夹，则显示子文件夹和返回按钮
-                if let selectedFolder = folderViewModel.selectedFolder {
-                    // 返回按钮
-                    Button(action: {
-                        // 修改返回逻辑，返回到父文件夹而非根目录
-                        if let parentFolder = selectedFolder.parentFolder {
-                            // 如果有父文件夹，返回到父文件夹
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                folderViewModel.selectedFolder = parentFolder
-                            }
-                        } else {
-                            // 如果是根文件夹，才返回到根目录
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                folderViewModel.selectedFolder = nil
-                            }
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: "chevron.left")
-                                .foregroundColor(.blue)
-                            // 显示返回到哪个文件夹或根目录
-                            Text(selectedFolder.parentFolder != nil ? "返回到 \"\(selectedFolder.parentFolder!.name)\"" : "返回到根目录")
-                                .foregroundColor(.blue)
-                            Spacer()
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    
-                    // 当前文件夹标题
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundColor(.blue)
-                        Text(selectedFolder.name)
-                            .font(.headline)
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 4)
-                    .listRowBackground(Color(.systemGray6))
-                    
-                    Divider()
-                        .padding(.vertical, 4)
-                    
-                    // 子文件夹区域
-                    Section(header: Text("子文件夹").font(.subheadline).foregroundColor(.secondary)) {
-                        if selectedFolder.childFoldersArray.isEmpty {
-                            Text("没有子文件夹")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .padding(.vertical, 8)
-                        } else {
-                            ForEach(selectedFolder.childFoldersArray) { folder in
-                                FolderRow(
-                                    folder: folder,
-                                    folderViewModel: folderViewModel,
-                                    onRename: {
-                                        folderAction.setupRename(folder: folder)
-                                    },
-                                    onMove: {
-                                        folderAction.setupMove(
-                                            folder: folder,
-                                            availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
-                                        )
-                                    },
-                                    onDelete: {
-                                        folderAction.setupDelete(folder: folder)
-                                    }
-                                )
+                
+                // 笔记区域
+                Section(header: Text("笔记").font(.subheadline).foregroundColor(.secondary)) {
+                    if selectedFolder.notesArray.isEmpty {
+                        Text("没有笔记")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(selectedFolder.notesArray) { note in
+                            NoteRow(note: note)
+                                .environmentObject(noteViewModel)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     withAnimation(.easeInOut(duration: 0.3)) {
-                                        folderViewModel.selectedFolder = folder
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 笔记区域
-                    Section(header: Text("笔记").font(.subheadline).foregroundColor(.secondary)) {
-                        if selectedFolder.notesArray.isEmpty {
-                            Text("没有笔记")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .padding(.vertical, 8)
-                        } else {
-                            ForEach(selectedFolder.notesArray) { note in
-                                NoteRow(note: note)
-                                    .environmentObject(noteViewModel)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
                                         noteViewModel.selectedNote = note
                                     }
-                            }
+                                }
                         }
                     }
-                } else {
-                    // 根目录下的文件夹列表
-                    ForEach(rootFolders) { folder in
-                        FolderRow(
-                            folder: folder,
-                            folderViewModel: folderViewModel,
-                            onRename: {
-                                folderAction.setupRename(folder: folder)
-                            },
-                            onMove: {
-                                folderAction.setupMove(
-                                    folder: folder,
-                                    availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
-                                )
-                            },
-                            onDelete: {
-                                folderAction.setupDelete(folder: folder)
-                            }
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                folderViewModel.selectedFolder = folder
-                            }
-                        }
-                    }
-                    .onDelete(perform: deleteFolder)
                 }
+            } else {
+                // 根目录下的文件夹列表
+                ForEach(rootFolders) { folder in
+                    FolderRow(
+                        folder: folder,
+                        folderViewModel: folderViewModel,
+                        onRename: {
+                            folderAction.setupRename(folder: folder)
+                        },
+                        onMove: {
+                            folderAction.setupMove(
+                                folder: folder,
+                                availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
+                            )
+                        },
+                        onDelete: {
+                            folderAction.setupDelete(folder: folder)
+                        }
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            folderViewModel.selectedFolder = folder
+                        }
+                    }
+                }
+                .onDelete(perform: deleteFolder)
             }
-            .listStyle(PlainListStyle())
-            .onChange(of: folderViewModel.folderUpdated) { _, _ in
-                // 刷新视图
-                viewContext.refreshAllObjects()
-            }
-            .environment(\.folderAction, folderAction)
         }
+        .listStyle(PlainListStyle())
+        .onChange(of: folderViewModel.folderUpdated) { _, _ in
+            // 刷新视图
+            viewContext.refreshAllObjects()
+        }
+        .environment(\.folderAction, folderAction)
         // 新建文件夹对话框
         .alert(createInCurrentFolder ? "新建子文件夹" : "新建文件夹", isPresented: $showAddFolder) {
             TextField("名称", text: $newFolderName)
@@ -664,58 +685,60 @@ struct NoteListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部标题栏 - 重新设计的三部分布局
-            HStack {
-                // 左侧：返回按钮
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        onBack()
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.body)
-                        Text("文件夹")
-                            .font(.body)
-                    }
-                    .foregroundColor(.blue)
-                }
-                .padding(.leading)
-                .frame(width: 90, alignment: .leading)
+            // 顶部标题栏 - 新的布局结构，确保标题严格居中
+            ZStack {
+                // 居中标题
+                Text(folder.name)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 
-                Spacer()
-                
-                // 中间：文件夹名称（居中显示，带图标）
-                HStack(spacing: 6) {
-                    Image(systemName: "folder.fill")
+                HStack {
+                    // 左侧：返回按钮
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            onBack()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.body)
+                            Text("文件夹")
+                                .font(.body)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                         .foregroundColor(.blue)
-                        .font(.headline)
-                        
-                    Text(folder.name)
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
+                    }
+                    .padding(.leading)
+                    .frame(width: 100, alignment: .leading)
+                    
+                    Spacer()
+                    
+                    // 右侧：添加笔记按钮
+                    Button(action: {
+                        // 直接创建新笔记并选中
+                        let newNote = noteViewModel.createNote(
+                            title: "",
+                            content: "",
+                            folder: folder
+                        )
+                        noteViewModel.selectedNote = newNote
+                    }) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                            .frame(width: 44, height: 44)
+                            .background(Color(.systemGray6))
+                            .clipShape(Circle())
+                    }
+                    .padding(.trailing)
+                    .frame(width: 100, alignment: .trailing)
                 }
-                .frame(maxWidth: .infinity)
-                
-                // 右侧：添加笔记按钮
-                Button(action: {
-                    // 直接创建新笔记并选中
-                    let newNote = noteViewModel.createNote(
-                        title: "",
-                        content: "",
-                        folder: folder
-                    )
-                    noteViewModel.selectedNote = newNote
-                }) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.title3)
-                        .foregroundColor(.blue)
-                }
-                .padding(.trailing)
-                .frame(width: 90, alignment: .trailing)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
             .background(Color(.systemBackground))
             
             Divider()
@@ -820,8 +843,10 @@ private struct NoteRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle()) // 确保整行都可点击
         .onTapGesture {
-            // 点击选择笔记
-            noteViewModel.selectedNote = note
+            // 点击选择笔记，添加与文件夹相同的动画效果
+            withAnimation(.easeInOut(duration: 0.3)) {
+                noteViewModel.selectedNote = note
+            }
         }
         .onLongPressGesture {
             // 长按显示操作菜单
@@ -986,52 +1011,53 @@ struct NoteEditorView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部导航栏 - 与文件夹界面保持一致的设计
-            HStack {
-                // 左侧：返回按钮
-                Button(action: {
-                    // 返回前确保立即保存当前更改
-                    debounceTimer?.invalidate()
-                    saveChanges()
-                    
-                    // 确保数据更新前强制刷新
-                    viewContext.refreshAllObjects()
-                    noteViewModel.forceRefresh()
-                    
-                    // 返回上一级（添加动画效果）
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        onBack()
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.body)
-                        Text("返回")
-                            .font(.body)
-                    }
-                    .foregroundColor(.blue)
-                }
-                .padding(.leading)
-                .frame(width: 90, alignment: .leading)
+            // 顶部导航栏 - 与文件夹界面保持一致的设计，确保标题居中
+            ZStack {
+                // 居中标题
+                Text(title.isEmpty ? "新笔记" : title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 
-                // 中间：显示笔记标题或"新笔记"（居中显示，带图标）
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.text")
+                HStack {
+                    // 左侧：返回按钮
+                    Button(action: {
+                        // 返回前确保立即保存当前更改
+                        debounceTimer?.invalidate()
+                        saveChanges()
+                        
+                        // 确保数据更新前强制刷新
+                        viewContext.refreshAllObjects()
+                        noteViewModel.forceRefresh()
+                        
+                        // 返回上一级（添加动画效果）
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            onBack()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.body)
+                            Text("返回")
+                                .font(.body)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                         .foregroundColor(.blue)
-                        .font(.headline)
+                    }
+                    .padding(.leading)
+                    .frame(width: 100, alignment: .leading)
                     
-                    Text(title.isEmpty ? "新笔记" : title)
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
+                    Spacer()
+                    
+                    // 右侧：预留空间保持对称
+                    Spacer()
+                        .frame(width: 100)
                 }
-                .frame(maxWidth: .infinity)
-                
-                // 右侧：预留空间保持对称
-                Spacer()
-                    .frame(width: 90)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
             .background(Color(.systemBackground))
             
             Divider()
