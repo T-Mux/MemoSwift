@@ -515,7 +515,8 @@ struct FolderListView: View {
                     newFolderName = ""
                 }
             }
-            .tint(.blue)
+            .disabled(newFolderName.isEmpty)
+            .tint(newFolderName.isEmpty ? .gray : .blue)
         } message: {
             if createInCurrentFolder, let selectedFolder = folderViewModel.selectedFolder {
                 Text("在文件夹 \"\(selectedFolder.name)\" 中创建新文件夹")
@@ -531,7 +532,8 @@ struct FolderListView: View {
                     folderViewModel.renameFolder(folder: folder, newName: folderAction.renamedFolderName)
                 }
             }
-            .tint(.blue)
+            .disabled(folderAction.renamedFolderName.isEmpty)
+            .tint(folderAction.renamedFolderName.isEmpty ? .gray : .blue)
         }
         // 移动文件夹对话框
         .sheet(isPresented: $folderAction.showMoveDialog) {
@@ -593,6 +595,18 @@ private struct FolderRow: View {
                     .font(.headline)
                 
                 HStack {
+                    // 显示父文件夹路径（如果有）
+                    if folder.parentFolder != nil {
+                        Text("路径: \(folder.fullPath.replacingOccurrences(of: "/\(folder.name)", with: ""))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
                     Text("\(folder.notesArray.count) 条笔记")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -942,6 +956,9 @@ struct NoteMoveTargetSelectionView: View {
     @State private var selectedFolder: Folder?
     @State private var searchText = ""
     
+    // 新增：跟踪展开状态的字典
+    @State private var expandedFolders: [UUID: Bool] = [:]
+    
     var filteredFolders: [Folder] {
         if searchText.isEmpty {
             return Array(allFolders)
@@ -950,27 +967,22 @@ struct NoteMoveTargetSelectionView: View {
         }
     }
     
+    // 根文件夹（没有父文件夹的）
+    var rootFolders: [Folder] {
+        filteredFolders.filter { $0.parentFolder == nil }
+    }
+    
+    // 返回特定父文件夹下的所有子文件夹
+    func childFolders(of parent: Folder) -> [Folder] {
+        return filteredFolders.filter { $0.parentFolder == parent }
+    }
+    
     var body: some View {
         NavigationView {
             List {
-                ForEach(filteredFolders) { folder in
-                    Button(action: {
-                        selectedFolder = folder
-                    }) {
-                        HStack {
-                            Image(systemName: "folder")
-                                .foregroundColor(.blue)
-                            Text(folder.name)
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            if selectedFolder == folder {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                    }
+                // 显示根文件夹及其子文件夹
+                ForEach(rootFolders) { folder in
+                    folderRow(folder: folder, level: 0)
                 }
             }
             .searchable(text: $searchText, prompt: "搜索文件夹")
@@ -992,6 +1004,62 @@ struct NoteMoveTargetSelectionView: View {
                     }
                     .disabled(selectedFolder == nil)
                 }
+            }
+        }
+    }
+    
+    // 递归构建文件夹行，支持层级折叠
+    @ViewBuilder
+    func folderRow(folder: Folder, level: Int) -> some View {
+        let hasChildren = childFolders(of: folder).count > 0
+        let isExpanded = expandedFolders[folder.id ?? UUID()] ?? false
+        
+        Button(action: {
+            if hasChildren {
+                // 如果有子文件夹，则切换展开状态
+                withAnimation {
+                    if let id = folder.id {
+                        expandedFolders[id] = !(expandedFolders[id] ?? false)
+                    }
+                }
+            }
+            // 不管是否有子文件夹，都可以选择当前文件夹
+            selectedFolder = folder
+        }) {
+            HStack {
+                // 缩进，根据层级增加缩进
+                if level > 0 {
+                    Spacer()
+                        .frame(width: CGFloat(level) * 20)
+                }
+                
+                // 文件夹图标，如果有子文件夹则显示折叠/展开图标
+                if hasChildren {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                }
+                
+                Image(systemName: "folder")
+                    .foregroundColor(.blue)
+                
+                Text(folder.name)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                if selectedFolder == folder {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        
+        // 递归显示子文件夹
+        if hasChildren && isExpanded {
+            ForEach(childFolders(of: folder)) { childFolder in
+                folderRow(folder: childFolder, level: level + 1)
             }
         }
     }
@@ -1138,12 +1206,26 @@ struct MoveTargetSelectionView: View {
     
     @State private var searchText = ""
     
+    // 新增：跟踪展开状态的字典
+    @State private var expandedFolders: [UUID: Bool] = [:]
+    
+    // 筛选和分组文件夹
     var filteredFolders: [Folder] {
         if searchText.isEmpty {
             return availableTargets
         } else {
             return availableTargets.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         }
+    }
+    
+    // 根文件夹（没有父文件夹的）
+    var rootFolders: [Folder] {
+        filteredFolders.filter { $0.parentFolder == nil }
+    }
+    
+    // 返回特定父文件夹下的所有子文件夹
+    func childFolders(of parent: Folder) -> [Folder] {
+        return filteredFolders.filter { $0.parentFolder == parent }
     }
     
     var body: some View {
@@ -1187,25 +1269,9 @@ struct MoveTargetSelectionView: View {
                             }
                         }
                         
-                        // 可用的目标文件夹
-                        ForEach(filteredFolders) { folder in
-                            Button(action: {
-                                selectedTarget = folder
-                            }) {
-                                HStack {
-                                    Image(systemName: "folder")
-                                        .foregroundColor(.blue)
-                                    Text(folder.name)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    if selectedTarget == folder {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(.blue)
-                                    }
-                                }
-                            }
+                        // 显示根文件夹及其子文件夹
+                        ForEach(rootFolders) { folder in
+                            folderRow(folder: folder, level: 0)
                         }
                     }
                     .searchable(text: $searchText, prompt: "搜索文件夹")
@@ -1225,6 +1291,71 @@ struct MoveTargetSelectionView: View {
                         onConfirm()
                     }
                 }
+            }
+        }
+    }
+    
+    // 递归构建文件夹行，支持层级折叠
+    @ViewBuilder
+    func folderRow(folder: Folder, level: Int) -> some View {
+        let hasChildren = childFolders(of: folder).count > 0
+        let isExpanded = expandedFolders[folder.id ?? UUID()] ?? false
+        
+        Button(action: {
+            if hasChildren {
+                // 如果有子文件夹，则切换展开状态
+                withAnimation {
+                    if let id = folder.id {
+                        expandedFolders[id] = !(expandedFolders[id] ?? false)
+                    }
+                }
+            } else {
+                // 如果没有子文件夹，则选择此文件夹
+                selectedTarget = folder
+            }
+        }) {
+            HStack {
+                // 缩进，根据层级增加缩进
+                if level > 0 {
+                    Spacer()
+                        .frame(width: CGFloat(level) * 20)
+                }
+                
+                // 文件夹图标，如果有子文件夹则显示折叠/展开图标
+                if hasChildren {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                }
+                
+                Image(systemName: "folder")
+                    .foregroundColor(.blue)
+                
+                Text(folder.name)
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                // 选择图标
+                Button(action: {
+                    selectedTarget = folder
+                }) {
+                    if selectedTarget == folder {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                    } else {
+                        Image(systemName: "circle")
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        
+        // 递归显示子文件夹
+        if hasChildren && isExpanded {
+            ForEach(childFolders(of: folder)) { childFolder in
+                folderRow(folder: childFolder, level: level + 1)
             }
         }
     }
