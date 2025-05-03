@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreData
 import BackgroundTasks
+import CloudKit
 
 @main
 struct MemoSwiftApp: App {
@@ -15,10 +16,22 @@ struct MemoSwiftApp: App {
     @State private var showError = false
     @State private var errorMessage = ""
     
+    // 定义Info.plist内容，这将与自动生成的Info.plist合并
+    @available(iOS 14.0, macOS 11.0, *)
+    static var infoPlist: [String: Any] = [
+        "UIBackgroundModes": ["remote-notification"],
+        "NSCameraUsageDescription": "需要使用相机来添加图片到笔记中",
+        "NSPhotoLibraryUsageDescription": "需要访问照片库来添加图片到笔记中"
+    ]
+    
     init() {
         // 设置全局错误处理
         setupGlobalErrorHandling()
         registerBackgroundTasks()
+        
+        // 检查iCloud账户状态
+        checkCloudKitAvailability()
+        
         // 在App初始化时全局设置Alert按钮的颜色
         UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor = .systemBlue
     }
@@ -97,6 +110,29 @@ struct MemoSwiftApp: App {
             try BGTaskScheduler.shared.submit(request)
         } catch {
             print("安排后台任务失败: \(error)")
+        }
+    }
+    
+    private func checkCloudKitAvailability() {
+        CKContainer.default().accountStatus { (accountStatus, error) in
+            switch accountStatus {
+            case .available:
+                print("iCloud账户可用")
+            case .noAccount:
+                print("无iCloud账户")
+            case .restricted:
+                print("iCloud账户受限")
+            case .couldNotDetermine:
+                print("无法确定iCloud账户状态")
+            case .temporarilyUnavailable:
+                print("iCloud账户暂时不可用")
+            @unknown default:
+                print("未知的iCloud账户状态")
+            }
+            
+            if let error = error {
+                print("检查iCloud账户状态时出错: \(error.localizedDescription)")
+            }
         }
     }
 }
