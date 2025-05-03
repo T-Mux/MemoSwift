@@ -88,6 +88,7 @@ struct ContentView: View {
                     .zIndex(1) // 确保层级顺序正确
                 } else {
                     EmptyNoteSelectionView()
+                        .transition(.move(edge: .leading))
                 }
             }
             .animation(.navigationPush, value: folderViewModel.selectedFolder != nil)
@@ -111,6 +112,7 @@ struct ContentView: View {
                     .zIndex(1) // 确保层级顺序正确
                 } else {
                     EmptyNoteEditorView()
+                        .transition(.move(edge: .leading))
                 }
             }
             .animation(.navigationPush, value: noteViewModel.selectedNote != nil)

@@ -221,8 +221,10 @@ struct FolderListView: View {
                                         folderAction.setupDelete(folder: folder)
                                     }
                                 )
+                                .contentTransition(.interpolate)
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     folderAction.setupDelete(folder: folder)
@@ -311,8 +313,10 @@ struct FolderListView: View {
                                 folderAction.setupDelete(folder: folder)
                             }
                         )
+                        .contentTransition(.interpolate)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             folderAction.setupDelete(folder: folder)

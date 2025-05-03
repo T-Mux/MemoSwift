@@ -15,14 +15,14 @@ struct FolderActionKey: EnvironmentKey {
 
 // 标准动画设置
 extension Animation {
-    static let standardNavigation = Animation.easeInOut(duration: 0.35)
+    static let standardNavigation = Animation.easeInOut(duration: 0.3)
     
-    // 更接近UIKit导航控制器的动画
-    static let navigationPush = Animation.interpolatingSpring(mass: 1.0, stiffness: 100, damping: 20, initialVelocity: 0)
-    static let navigationPop = Animation.interpolatingSpring(mass: 1.0, stiffness: 100, damping: 20, initialVelocity: 0)
+    // 更接近UIKit导航控制器的动画 - 专注于手势滑动的感觉
+    static let navigationPush = Animation.spring(response: 0.35, dampingFraction: 0.85)
+    static let navigationPop = Animation.spring(response: 0.35, dampingFraction: 0.85)
 }
 
-// 自定义导航过渡动画修饰符 - 更准确地模拟UIKit导航控制器的效果
+// 自定义导航过渡动画修饰符 - 更适合手势滑动的效果
 struct NavigationTransition: ViewModifier {
     let isPresenting: Bool
     
@@ -30,8 +30,8 @@ struct NavigationTransition: ViewModifier {
         content
             .transition(
                 .asymmetric(
-                    insertion: .offset(x: isPresenting ? UIScreen.main.bounds.width : -UIScreen.main.bounds.width),
-                    removal: .offset(x: isPresenting ? -UIScreen.main.bounds.width : UIScreen.main.bounds.width)
+                    insertion: .move(edge: isPresenting ? .trailing : .leading),
+                    removal: .move(edge: isPresenting ? .leading : .trailing)
                 )
             )
     }

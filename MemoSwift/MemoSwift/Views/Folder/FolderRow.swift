@@ -59,6 +59,12 @@ struct FolderRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle()) // 确保整行都可点击
+        .onTapGesture {
+            withAnimation(.navigationPush) {
+                folderViewModel.selectedFolder = folder
+            }
+        }
+        .transition(.slide)
         .contextMenu {
             // 上下文菜单
             Button(action: onRename) {

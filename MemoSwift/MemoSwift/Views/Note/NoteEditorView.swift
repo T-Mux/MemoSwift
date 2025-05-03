@@ -109,6 +109,7 @@ struct NoteEditorView: View {
             // 强制刷新确保所有更改可见
             noteViewModel.forceRefresh()
         }
+        .transition(.move(edge: .trailing))
     }
     
     // 延迟保存 - 使用计时器防抖

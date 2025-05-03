@@ -44,7 +44,7 @@ struct NoteListView: View {
                 HStack {
                     // 左侧：返回按钮
                     Button(action: {
-                        withAnimation(.standardNavigation) {
+                        withAnimation(.navigationPop) {
                             onBack()
                         }
                     }) {
@@ -119,10 +119,10 @@ struct NoteListView: View {
                         }) {
                             NoteRow(note: note)
                                 .tag(note)
-                                .id("\(note.id?.uuidString ?? "")-\(noteViewModel.noteUpdated)") // 使用noteUpdated触发刷新
-                                .environmentObject(noteViewModel) // 传递noteViewModel给NoteRow
+                                .environmentObject(noteViewModel)
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .transition(.slide)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 noteViewModel.deleteNote(note: note)

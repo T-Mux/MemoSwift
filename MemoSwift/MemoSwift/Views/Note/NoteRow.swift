@@ -45,15 +45,18 @@ struct NoteRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle()) // 确保整行都可点击
         .onTapGesture {
-            // 点击选择笔记，使用标准导航动画
-            withAnimation(.standardNavigation) {
+            // 点击选择笔记，使用导航推送动画
+            withAnimation(.navigationPush) {
                 noteViewModel.selectedNote = note
             }
         }
+        // 添加适合手势滑动的转换效果
+        .transition(.slide)
         .onLongPressGesture {
             // 长按显示操作菜单
             isShowingMenu = true
         }
+        .contentTransition(.interpolate) // 更平滑的内容更新过渡效果
         .contextMenu {
             // 上下文菜单支持（右键菜单）
             Button(action: {
