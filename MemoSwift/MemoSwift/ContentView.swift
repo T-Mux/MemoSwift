@@ -14,6 +14,36 @@ private struct FolderActionKey: EnvironmentKey {
     static let defaultValue: FolderAction = FolderAction()
 }
 
+// 标准动画设置
+extension Animation {
+    static let standardNavigation = Animation.easeInOut(duration: 0.35)
+    
+    // 更接近UIKit导航控制器的动画
+    static let navigationPush = Animation.interpolatingSpring(mass: 1.0, stiffness: 100, damping: 20, initialVelocity: 0)
+    static let navigationPop = Animation.interpolatingSpring(mass: 1.0, stiffness: 100, damping: 20, initialVelocity: 0)
+}
+
+// 自定义导航过渡动画修饰符 - 更准确地模拟UIKit导航控制器的效果
+struct NavigationTransition: ViewModifier {
+    let isPresenting: Bool
+    
+    func body(content: Content) -> some View {
+        content
+            .transition(
+                .asymmetric(
+                    insertion: .offset(x: isPresenting ? UIScreen.main.bounds.width : -UIScreen.main.bounds.width),
+                    removal: .offset(x: isPresenting ? -UIScreen.main.bounds.width : UIScreen.main.bounds.width)
+                )
+            )
+    }
+}
+
+extension View {
+    func navigationTransition(isPresenting: Bool) -> some View {
+        self.modifier(NavigationTransition(isPresenting: isPresenting))
+    }
+}
+
 extension EnvironmentValues {
     var folderAction: FolderAction {
         get { self[FolderActionKey.self] }
@@ -107,29 +137,30 @@ struct ContentView: View {
             .environmentObject(noteViewModel)
             .onChange(of: noteViewModel.selectedNote) { _, note in
                 if note != nil {
-                    // 当选中笔记时，确保显示详情视图（添加动画）
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    // 当选中笔记时，确保显示详情视图
+                    withAnimation(.navigationPush) {
                         columnVisibility = .detailOnly
                     }
                 }
             }
         } content: {
             // Second column: Notes in selected folder
-            Group {
+            ZStack {
                 if let selectedFolder = folderViewModel.selectedFolder {
                     NoteListView(
                         folder: selectedFolder,
                         noteViewModel: noteViewModel,
                         onBack: {
                             // 返回文件夹列表
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(.navigationPop) {
                                 folderViewModel.selectedFolder = nil
                                 // 在iPhone上显示文件夹列表列
                                 columnVisibility = .all
                             }
                         }
                     )
-                    .transition(.opacity)
+                    .navigationTransition(isPresenting: true)
+                    .zIndex(1) // 确保层级顺序正确
                 } else {
                     VStack {
                         Image(systemName: "folder.badge.questionmark")
@@ -143,27 +174,28 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemGroupedBackground))
-                    .transition(.opacity)
+                    .zIndex(0) // 确保层级顺序正确
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: folderViewModel.selectedFolder != nil)
+            .animation(.navigationPush, value: folderViewModel.selectedFolder != nil)
         } detail: {
             // Third column: Note editor
-            Group {
+            ZStack {
                 if let selectedNote = noteViewModel.selectedNote {
                     NoteEditorView(
                         note: selectedNote,
                         noteViewModel: noteViewModel,
                         onBack: {
                             // 返回笔记列表
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                            withAnimation(.navigationPop) {
                                 noteViewModel.selectedNote = nil
                                 // 在iPhone上恢复到上一列
                                 columnVisibility = .automatic
                             }
                         }
                     )
-                    .transition(.opacity)
+                    .navigationTransition(isPresenting: true)
+                    .zIndex(1) // 确保层级顺序正确
                 } else {
                     VStack {
                         Image(systemName: "note.text.badge.plus")
@@ -177,10 +209,10 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemBackground))
-                    .transition(.opacity)
+                    .zIndex(0) // 确保层级顺序正确
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: noteViewModel.selectedNote != nil)
+            .animation(.navigationPush, value: noteViewModel.selectedNote != nil)
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -235,9 +267,17 @@ struct FolderListView: View {
     @State private var createInCurrentFolder = false // 是否在当前选中的文件夹中创建
     @State private var showPathNavigationMenu = false // 控制路径导航菜单的显示
     @Environment(\.managedObjectContext) private var viewContext
+    @State private var noteToMove: Note? = nil // 要移动的笔记
+    @State private var showNoteMoveSheet = false // 控制笔记移动面板的显示
     
     // 创建一个文件夹操作状态对象
     @StateObject private var folderAction = FolderAction()
+    
+    // 显示笔记移动面板
+    private func showMoveNoteSheet(note: Note) {
+        noteToMove = note
+        showNoteMoveSheet = true
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -320,12 +360,12 @@ struct FolderListView: View {
                             // 修改返回逻辑，返回到父文件夹而非根目录
                             if let parentFolder = selectedFolder.parentFolder {
                                 // 如果有父文件夹，返回到父文件夹
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(.navigationPop) {
                                     folderViewModel.selectedFolder = parentFolder
                                 }
                             } else {
                                 // 如果是根文件夹，才返回到根目录
-                                withAnimation(.easeInOut(duration: 0.3)) {
+                                withAnimation(.navigationPop) {
                                     folderViewModel.selectedFolder = nil
                                 }
                             }
@@ -404,27 +444,53 @@ struct FolderListView: View {
                             .padding(.vertical, 8)
                     } else {
                         ForEach(selectedFolder.childFoldersArray) { folder in
-                            FolderRow(
-                                folder: folder,
-                                folderViewModel: folderViewModel,
-                                onRename: {
+                            // 进入子文件夹
+                            Button(action: {
+                                withAnimation(.navigationPush) {
+                                    folderViewModel.selectedFolder = folder
+                                }
+                            }) {
+                                FolderRow(
+                                    folder: folder,
+                                    folderViewModel: folderViewModel,
+                                    onRename: {
+                                        folderAction.setupRename(folder: folder)
+                                    },
+                                    onMove: {
+                                        folderAction.setupMove(
+                                            folder: folder,
+                                            availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
+                                        )
+                                    },
+                                    onDelete: {
+                                        folderAction.setupDelete(folder: folder)
+                                    }
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    folderAction.setupDelete(folder: folder)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                                
+                                Button {
                                     folderAction.setupRename(folder: folder)
-                                },
-                                onMove: {
+                                } label: {
+                                    Label("重命名", systemImage: "pencil")
+                                }
+                                .tint(.orange)
+                                
+                                Button {
                                     folderAction.setupMove(
                                         folder: folder,
                                         availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
                                     )
-                                },
-                                onDelete: {
-                                    folderAction.setupDelete(folder: folder)
+                                } label: {
+                                    Label("移动", systemImage: "folder")
                                 }
-                            )
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    folderViewModel.selectedFolder = folder
-                                }
+                                .tint(.blue)
                             }
                         }
                     }
@@ -439,41 +505,82 @@ struct FolderListView: View {
                             .padding(.vertical, 8)
                     } else {
                         ForEach(selectedFolder.notesArray) { note in
-                            NoteRow(note: note)
-                                .environmentObject(noteViewModel)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        noteViewModel.selectedNote = note
-                                    }
+                            Button(action: {
+                                withAnimation(.navigationPush) {
+                                    noteViewModel.selectedNote = note
                                 }
+                            }) {
+                                NoteRow(note: note)
+                                    .environmentObject(noteViewModel)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    noteViewModel.deleteNote(note: note)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                                
+                                Button {
+                                    showMoveNoteSheet(note: note)
+                                } label: {
+                                    Label("移动", systemImage: "folder")
+                                }
+                                .tint(.blue)
+                            }
                         }
                     }
                 }
             } else {
                 // 根目录下的文件夹列表
                 ForEach(rootFolders) { folder in
-                    FolderRow(
-                        folder: folder,
-                        folderViewModel: folderViewModel,
-                        onRename: {
+                    // 进入文件夹
+                    Button(action: {
+                        withAnimation(.navigationPush) {
+                            folderViewModel.selectedFolder = folder
+                        }
+                    }) {
+                        FolderRow(
+                            folder: folder,
+                            folderViewModel: folderViewModel,
+                            onRename: {
+                                folderAction.setupRename(folder: folder)
+                            },
+                            onMove: {
+                                folderAction.setupMove(
+                                    folder: folder,
+                                    availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
+                                )
+                            },
+                            onDelete: {
+                                folderAction.setupDelete(folder: folder)
+                            }
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            folderAction.setupDelete(folder: folder)
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                        
+                        Button {
                             folderAction.setupRename(folder: folder)
-                        },
-                        onMove: {
+                        } label: {
+                            Label("重命名", systemImage: "pencil")
+                        }
+                        .tint(.orange)
+                        
+                        Button {
                             folderAction.setupMove(
                                 folder: folder,
                                 availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
                             )
-                        },
-                        onDelete: {
-                            folderAction.setupDelete(folder: folder)
+                        } label: {
+                            Label("移动", systemImage: "folder")
                         }
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            folderViewModel.selectedFolder = folder
-                        }
+                        .tint(.blue)
                     }
                 }
                 .onDelete(perform: deleteFolder)
@@ -491,7 +598,7 @@ struct FolderListView: View {
                 List {
                     // 根目录选项
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(.navigationPush) {
                             folderViewModel.selectedFolder = nil
                             showPathNavigationMenu = false
                         }
@@ -530,7 +637,7 @@ struct FolderListView: View {
                                 // 父文件夹列表 (按照层级顺序显示)
                                 ForEach(parentFolders.reversed(), id: \.id) { folder in
                                     Button(action: {
-                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                        withAnimation(.navigationPush) {
                                             folderViewModel.selectedFolder = folder
                                             showPathNavigationMenu = false
                                         }
@@ -671,6 +778,13 @@ struct FolderListView: View {
                 Text("确定要删除文件夹 \"\(folder.name)\" 及其所有内容吗？此操作无法撤销。")
             }
         }
+        // 笔记移动面板
+        .sheet(isPresented: $showNoteMoveSheet) {
+            if let note = noteToMove {
+                NoteMoveTargetSelectionView(note: note)
+                    .environmentObject(noteViewModel)
+            }
+        }
     }
     
     private func deleteFolder(at offsets: IndexSet) {
@@ -803,6 +917,9 @@ struct NoteListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
     
+    @State private var showMoveSheet = false
+    @State private var moveNote: Note?
+    
     init(folder: Folder, noteViewModel: NoteViewModel, onBack: @escaping () -> Void) {
         self.folder = folder
         self.noteViewModel = noteViewModel
@@ -827,7 +944,7 @@ struct NoteListView: View {
                 HStack {
                     // 左侧：返回按钮
                     Button(action: {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(.standardNavigation) {
                             onBack()
                         }
                     }) {
@@ -895,10 +1012,31 @@ struct NoteListView: View {
             } else {
                 List(selection: $noteViewModel.selectedNote) {
                     ForEach(notes) { note in
-                        NoteRow(note: note)
-                            .tag(note)
-                            .id("\(note.id?.uuidString ?? "")-\(noteViewModel.noteUpdated)") // 使用noteUpdated触发刷新
-                            .environmentObject(noteViewModel) // 传递noteViewModel给NoteRow
+                        Button(action: {
+                            withAnimation(.navigationPush) {
+                                noteViewModel.selectedNote = note
+                            }
+                        }) {
+                            NoteRow(note: note)
+                                .tag(note)
+                                .id("\(note.id?.uuidString ?? "")-\(noteViewModel.noteUpdated)") // 使用noteUpdated触发刷新
+                                .environmentObject(noteViewModel) // 传递noteViewModel给NoteRow
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                noteViewModel.deleteNote(note: note)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                            
+                            Button {
+                                showMoveNoteSheet(note)
+                            } label: {
+                                Label("移动", systemImage: "folder")
+                            }
+                            .tint(.blue)
+                        }
                     }
                     .onDelete(perform: deleteNote)
                 }
@@ -914,6 +1052,19 @@ struct NoteListView: View {
             // 当笔记数据更新时，刷新列表
             refreshData()
         }
+        // 笔记移动面板
+        .sheet(isPresented: $showMoveSheet) {
+            if let moveNote = moveNote {
+                NoteMoveTargetSelectionView(note: moveNote)
+                    .environmentObject(noteViewModel)
+            }
+        }
+    }
+    
+    // 显示笔记移动面板
+    private func showMoveNoteSheet(_ note: Note) {
+        moveNote = note
+        showMoveSheet = true
     }
     
     // 刷新数据的函数
@@ -972,8 +1123,8 @@ private struct NoteRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle()) // 确保整行都可点击
         .onTapGesture {
-            // 点击选择笔记，添加与文件夹相同的动画效果
-            withAnimation(.easeInOut(duration: 0.3)) {
+            // 点击选择笔记，使用标准导航动画
+            withAnimation(.standardNavigation) {
                 noteViewModel.selectedNote = note
             }
         }
@@ -1122,52 +1273,114 @@ struct NoteMoveTargetSelectionView: View {
         let hasChildren = childFolders(of: folder).count > 0
         let isExpanded = expandedFolders[folder.id ?? UUID()] ?? false
         
-        Button(action: {
-            if hasChildren {
-                // 如果有子文件夹，则切换展开状态
-                withAnimation {
-                    if let id = folder.id {
-                        expandedFolders[id] = !(expandedFolders[id] ?? false)
+        VStack(spacing: 0) {
+            Button(action: {
+                if hasChildren {
+                    // 如果有子文件夹，则切换展开状态
+                    withAnimation(.standardNavigation) {
+                        if let id = folder.id {
+                            expandedFolders[id] = !(expandedFolders[id] ?? false)
+                        }
+                    }
+                }
+                // 不管是否有子文件夹，都可以选择当前文件夹
+                selectedFolder = folder
+            }) {
+                HStack {
+                    // 缩进，根据层级增加缩进
+                    if level > 0 {
+                        Spacer()
+                            .frame(width: CGFloat(level) * 20)
+                    }
+                    
+                    // 文件夹图标，如果有子文件夹则显示折叠/展开图标
+                    if hasChildren {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                    }
+                    
+                    Image(systemName: "folder")
+                        .foregroundColor(.blue)
+                    
+                    Text(folder.name)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    if selectedFolder == folder {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
                     }
                 }
             }
-            // 不管是否有子文件夹，都可以选择当前文件夹
-            selectedFolder = folder
-        }) {
-            HStack {
-                // 缩进，根据层级增加缩进
-                if level > 0 {
-                    Spacer()
-                        .frame(width: CGFloat(level) * 20)
+            .contentShape(Rectangle())
+            
+            // 子文件夹
+            if hasChildren && isExpanded {
+                ForEach(childFolders(of: folder)) { childFolder in
+                    // 非递归调用，直接内联
+                    let childHasChildren = childFolders(of: childFolder).count > 0
+                    let childIsExpanded = expandedFolders[childFolder.id ?? UUID()] ?? false
+                    
+                    VStack(spacing: 0) {
+                        Button(action: {
+                            if childHasChildren {
+                                withAnimation(.standardNavigation) {
+                                    if let id = childFolder.id {
+                                        expandedFolders[id] = !(expandedFolders[id] ?? false)
+                                    }
+                                }
+                            }
+                            selectedFolder = childFolder
+                        }) {
+                            HStack {
+                                // 增加缩进
+                                Spacer()
+                                    .frame(width: CGFloat(level + 1) * 20)
+                                
+                                if childHasChildren {
+                                    Image(systemName: childIsExpanded ? "chevron.down" : "chevron.right")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Image(systemName: "folder")
+                                    .foregroundColor(.blue)
+                                
+                                Text(childFolder.name)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                if selectedFolder == childFolder {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        
+                        // 对于二级子文件夹，我们显示一个"更多..."按钮，而不是递归
+                        if childHasChildren && childIsExpanded {
+                            Button(action: {
+                                selectedFolder = childFolder
+                            }) {
+                                HStack {
+                                    Spacer()
+                                        .frame(width: CGFloat(level + 2) * 20)
+                                    
+                                    Text("更多...")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                    
+                                    Spacer()
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
                 }
-                
-                // 文件夹图标，如果有子文件夹则显示折叠/展开图标
-                if hasChildren {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundColor(.gray)
-                }
-                
-                Image(systemName: "folder")
-                    .foregroundColor(.blue)
-                
-                Text(folder.name)
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                if selectedFolder == folder {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.blue)
-                }
-            }
-        }
-        .contentShape(Rectangle())
-        
-        // 递归显示子文件夹
-        if hasChildren && isExpanded {
-            ForEach(childFolders(of: folder)) { childFolder in
-                folderRow(folder: childFolder, level: level + 1)
             }
         }
     }
@@ -1216,8 +1429,8 @@ struct NoteEditorView: View {
                         viewContext.refreshAllObjects()
                         noteViewModel.forceRefresh()
                         
-                        // 返回上一级（添加动画效果）
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        // 返回上一级（使用导航控制器风格的动画）
+                        withAnimation(.navigationPop) {
                             onBack()
                         }
                     }) {
@@ -1409,61 +1622,132 @@ struct MoveTargetSelectionView: View {
         let hasChildren = childFolders(of: folder).count > 0
         let isExpanded = expandedFolders[folder.id ?? UUID()] ?? false
         
-        Button(action: {
-            if hasChildren {
-                // 如果有子文件夹，则切换展开状态
-                withAnimation {
-                    if let id = folder.id {
-                        expandedFolders[id] = !(expandedFolders[id] ?? false)
-                    }
-                }
-            } else {
-                // 如果没有子文件夹，则选择此文件夹
-                selectedTarget = folder
-            }
-        }) {
-            HStack {
-                // 缩进，根据层级增加缩进
-                if level > 0 {
-                    Spacer()
-                        .frame(width: CGFloat(level) * 20)
-                }
-                
-                // 文件夹图标，如果有子文件夹则显示折叠/展开图标
+        VStack(spacing: 0) {
+            Button(action: {
                 if hasChildren {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundColor(.gray)
-                }
-                
-                Image(systemName: "folder")
-                    .foregroundColor(.blue)
-                
-                Text(folder.name)
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                // 选择图标
-                Button(action: {
+                    // 如果有子文件夹，则切换展开状态
+                    withAnimation(.standardNavigation) {
+                        if let id = folder.id {
+                            expandedFolders[id] = !(expandedFolders[id] ?? false)
+                        }
+                    }
+                } else {
+                    // 如果没有子文件夹，则选择此文件夹
                     selectedTarget = folder
-                }) {
-                    if selectedTarget == folder {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                    } else {
-                        Image(systemName: "circle")
+                }
+            }) {
+                HStack {
+                    // 缩进，根据层级增加缩进
+                    if level > 0 {
+                        Spacer()
+                            .frame(width: CGFloat(level) * 20)
+                    }
+                    
+                    // 文件夹图标，如果有子文件夹则显示折叠/展开图标
+                    if hasChildren {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 12))
                             .foregroundColor(.gray)
                     }
+                    
+                    Image(systemName: "folder")
+                        .foregroundColor(.blue)
+                    
+                    Text(folder.name)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    // 选择图标
+                    Button(action: {
+                        selectedTarget = folder
+                    }) {
+                        if selectedTarget == folder {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.blue)
+                        } else {
+                            Image(systemName: "circle")
+                                .foregroundColor(.gray)
+                        }
+                    }
                 }
             }
-        }
-        .contentShape(Rectangle())
-        
-        // 递归显示子文件夹
-        if hasChildren && isExpanded {
-            ForEach(childFolders(of: folder)) { childFolder in
-                folderRow(folder: childFolder, level: level + 1)
+            .contentShape(Rectangle())
+            
+            // 子文件夹
+            if hasChildren && isExpanded {
+                ForEach(childFolders(of: folder)) { childFolder in
+                    // 非递归调用，直接内联
+                    let childHasChildren = childFolders(of: childFolder).count > 0
+                    let childIsExpanded = expandedFolders[childFolder.id ?? UUID()] ?? false
+                    
+                    VStack(spacing: 0) {
+                        Button(action: {
+                            if childHasChildren {
+                                withAnimation(.standardNavigation) {
+                                    if let id = childFolder.id {
+                                        expandedFolders[id] = !(expandedFolders[id] ?? false)
+                                    }
+                                }
+                            } else {
+                                selectedTarget = childFolder
+                            }
+                        }) {
+                            HStack {
+                                // 增加缩进
+                                Spacer()
+                                    .frame(width: CGFloat(level + 1) * 20)
+                                
+                                if childHasChildren {
+                                    Image(systemName: childIsExpanded ? "chevron.down" : "chevron.right")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                                
+                                Image(systemName: "folder")
+                                    .foregroundColor(.blue)
+                                
+                                Text(childFolder.name)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                // 选择图标
+                                Button(action: {
+                                    selectedTarget = childFolder
+                                }) {
+                                    if selectedTarget == childFolder {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                    } else {
+                                        Image(systemName: "circle")
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        
+                        // 对于二级子文件夹，我们显示一个"更多..."按钮，而不是递归
+                        if childHasChildren && childIsExpanded {
+                            Button(action: {
+                                selectedTarget = childFolder
+                            }) {
+                                HStack {
+                                    Spacer()
+                                        .frame(width: CGFloat(level + 2) * 20)
+                                    
+                                    Text("更多...")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                    
+                                    Spacer()
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
             }
         }
     }
