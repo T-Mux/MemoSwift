@@ -233,7 +233,7 @@ struct FolderListView: View {
     @State private var showAddFolder = false
     @State private var newFolderName = ""
     @State private var createInCurrentFolder = false // 是否在当前选中的文件夹中创建
-    @State private var showCreateMenu = false // 控制创建菜单的显示
+    @State private var showPathNavigationMenu = false // 控制路径导航菜单的显示
     @Environment(\.managedObjectContext) private var viewContext
     
     // 创建一个文件夹操作状态对象
@@ -245,12 +245,23 @@ struct FolderListView: View {
             ZStack {
                 // 居中标题
                 if let selectedFolder = folderViewModel.selectedFolder {
-                    Text(selectedFolder.name)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    // 添加点击操作，显示路径菜单
+                    Button(action: {
+                        showPathNavigationMenu = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Text(selectedFolder.name)
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                        }
+                    }
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     Text("文件夹")
                         .font(.title2)
@@ -297,9 +308,29 @@ struct FolderListView: View {
                     Spacer()
                     
                     // 新设计：展开下拉菜单按钮
-                    Button(action: {
-                        showCreateMenu.toggle()
-                    }) {
+                    Menu {
+                        Button(action: {
+                            // 创建新文件夹
+                            createInCurrentFolder = folderViewModel.selectedFolder != nil
+                            showAddFolder = true
+                        }) {
+                            Label("新建文件夹", systemImage: "folder.badge.plus")
+                        }
+                        
+                        if let selectedFolder = folderViewModel.selectedFolder {
+                            Button(action: {
+                                // 创建新笔记并选中
+                                let newNote = noteViewModel.createNote(
+                                    title: "",
+                                    content: "",
+                                    folder: selectedFolder
+                                )
+                                noteViewModel.selectedNote = newNote
+                            }) {
+                                Label("新建笔记", systemImage: "note.text.badge.plus")
+                            }
+                        }
+                    } label: {
                         Image(systemName: "plus")
                             .font(.title3)
                             .foregroundColor(.blue)
@@ -313,94 +344,7 @@ struct FolderListView: View {
             }
             .padding(.vertical, 10)
             .background(Color(.systemBackground))
-            .sheet(isPresented: $showCreateMenu) {
-                // 底部弹出式菜单
-                VStack(spacing: 0) {
-                    // 标题区域
-                    HStack {
-                        Spacer()
-                        Text("新建")
-                            .font(.headline)
-                            .padding()
-                        Spacer()
-                    }
-                    .background(Color(.systemGray6))
-                    
-                    Divider()
-                    
-                    // 菜单项列表
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Button(action: {
-                                // 修改为根据当前选中的文件夹状态设置 createInCurrentFolder
-                                createInCurrentFolder = folderViewModel.selectedFolder != nil
-                                showAddFolder = true
-                                showCreateMenu = false
-                            }) {
-                                HStack {
-                                    Image(systemName: "folder.badge.plus")
-                                        .foregroundColor(.blue)
-                                        .frame(width: 30)
-                                    Text("新建文件夹")
-                                        .foregroundColor(.blue)
-                                    Spacer()
-                                }
-                                .padding(.vertical, 14)
-                                .padding(.horizontal, 20)
-                                .contentShape(Rectangle())
-                            }
-                            
-                            Divider()
-                                .padding(.leading, 50)
-                            
-                            if let selectedFolder = folderViewModel.selectedFolder {
-                                Button(action: {
-                                    // 创建新笔记并选中
-                                    let newNote = noteViewModel.createNote(
-                                        title: "",
-                                        content: "",
-                                        folder: selectedFolder
-                                    )
-                                    noteViewModel.selectedNote = newNote
-                                    showCreateMenu = false
-                                }) {
-                                    HStack {
-                                        Image(systemName: "note.text.badge.plus")
-                                            .foregroundColor(.blue)
-                                            .frame(width: 30)
-                                        Text("新建笔记")
-                                            .foregroundColor(.blue)
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 14)
-                                    .padding(.horizontal, 20)
-                                    .contentShape(Rectangle())
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 底部取消按钮
-                    Button(action: {
-                        showCreateMenu = false
-                    }) {
-                        Text("取消")
-                            .font(.headline)
-                            .foregroundColor(.blue)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                    }
-                    .background(Color(.systemGray6))
-                    .padding(.top, 8)
-                }
-                .background(Color(.systemBackground))
-                .cornerRadius(15)
-                .presentationDetents([.height(folderViewModel.selectedFolder != nil ? 220 : 160)])
-                .presentationDragIndicator(.visible)
-            }
         }
-        .padding(.vertical, 10)
-        .background(Color(.systemBackground))
         
         Divider()
         
@@ -498,6 +442,47 @@ struct FolderListView: View {
             viewContext.refreshAllObjects()
         }
         .environment(\.folderAction, folderAction)
+        // 路径导航菜单
+        .actionSheet(isPresented: $showPathNavigationMenu) {
+            // 如果有选中的文件夹，显示路径导航菜单
+            if let selectedFolder = folderViewModel.selectedFolder {
+                let parentFolders = getParentFolders(for: selectedFolder)
+                
+                var buttons: [ActionSheet.Button] = []
+                
+                // 添加根目录按钮
+                buttons.append(.default(Text("返回根目录")) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        folderViewModel.selectedFolder = nil
+                    }
+                })
+                
+                // 添加所有父文件夹的按钮（从直接父级开始）
+                for parent in parentFolders.reversed() {
+                    buttons.append(.default(Text(parent.name)) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            folderViewModel.selectedFolder = parent
+                        }
+                    })
+                }
+                
+                // 添加取消按钮
+                buttons.append(.cancel(Text("取消")))
+                
+                return ActionSheet(
+                    title: Text("导航到"),
+                    message: Text("选择要导航到的文件夹"),
+                    buttons: buttons
+                )
+            } else {
+                // 如果没有选中的文件夹，显示空的菜单
+                return ActionSheet(
+                    title: Text("导航到"),
+                    message: nil,
+                    buttons: [.cancel(Text("取消"))]
+                )
+            }
+        }
         // 新建文件夹对话框
         .alert(createInCurrentFolder ? "新建子文件夹" : "新建文件夹", isPresented: $showAddFolder) {
             TextField("名称", text: $newFolderName)
@@ -571,6 +556,19 @@ struct FolderListView: View {
             folderViewModel.deleteFolder(folder: rootFolders[index])
         }
     }
+    
+    // 获取指定文件夹的所有父文件夹
+    private func getParentFolders(for folder: Folder) -> [Folder] {
+        var parentFolders: [Folder] = []
+        
+        var currentFolder: Folder? = folder.parentFolder
+        while currentFolder != nil {
+            parentFolders.append(currentFolder!)
+            currentFolder = currentFolder!.parentFolder
+        }
+        
+        return parentFolders
+    }
 }
 
 // 文件夹行视图组件 (保留用于其他部分的引用)
@@ -595,18 +593,6 @@ private struct FolderRow: View {
                     .font(.headline)
                 
                 HStack {
-                    // 显示父文件夹路径（如果有）
-                    if folder.parentFolder != nil {
-                        Text("路径: \(folder.fullPath.replacingOccurrences(of: "/\(folder.name)", with: ""))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        
-                        Text("•")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
                     Text("\(folder.notesArray.count) 条笔记")
                         .font(.caption)
                         .foregroundColor(.secondary)
