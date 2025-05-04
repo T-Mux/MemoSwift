@@ -99,6 +99,8 @@ struct NoteRow: View {
         }
         .sheet(isPresented: $showMoveSheet) {
             NoteMoveTargetSelectionView(note: note)
+                .environmentObject(noteViewModel)
+                .environment(\.managedObjectContext, viewContext)
         }
         .alert("确认删除", isPresented: $showDeleteConfirmation) {
             Button("取消", role: .cancel) { }

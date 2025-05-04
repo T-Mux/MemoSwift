@@ -533,6 +533,7 @@ struct FolderListView: View {
                     }
                 }
             )
+            .environment(\.managedObjectContext, viewContext)
         }
         // 删除确认对话框
         .alert("确认删除", isPresented: $folderAction.showDeleteConfirmation) {
@@ -553,6 +554,7 @@ struct FolderListView: View {
             if let note = noteToMove {
                 NoteMoveTargetSelectionView(note: note)
                     .environmentObject(noteViewModel)
+                    .environment(\.managedObjectContext, viewContext)
             }
         }
     }

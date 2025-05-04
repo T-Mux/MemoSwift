@@ -108,6 +108,7 @@ struct ContentView: View {
                             }
                         }
                     )
+                    .environment(\.managedObjectContext, viewContext)
                     .navigationTransition(isPresenting: true)
                     .zIndex(1) // 确保层级顺序正确
                 } else {

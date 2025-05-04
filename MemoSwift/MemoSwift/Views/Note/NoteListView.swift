@@ -143,6 +143,7 @@ struct NoteListView: View {
             if let moveNote = moveNote {
                 NoteMoveTargetSelectionView(note: moveNote)
                     .environmentObject(noteViewModel)
+                    .environment(\.managedObjectContext, viewContext)
             }
         }
         // OCR 视图
