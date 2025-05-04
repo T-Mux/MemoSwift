@@ -134,9 +134,6 @@ struct ContentView: View {
                     )
                     .navigationTransition(isPresenting: true)
                     .zIndex(1) // 确保层级顺序正确
-                } else {
-                    EmptyNoteEditorView()
-                        .transition(.move(edge: .leading))
                 }
             }
             .animation(.navigationPush, value: noteViewModel.selectedNote != nil)
@@ -159,23 +156,6 @@ struct EmptyNoteSelectionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemGroupedBackground))
-    }
-}
-
-struct EmptyNoteEditorView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "note.text.badge.plus")
-                .font(.system(size: 50))
-                .foregroundColor(.blue)
-                .padding()
-            
-            Text("请选择或创建一条笔记")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
     }
 }
 

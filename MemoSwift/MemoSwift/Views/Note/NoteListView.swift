@@ -32,7 +32,7 @@ struct NoteListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部标题栏 - 新的布局结构，确保标题严格居中
+            // 顶部标题栏
             ZStack {
                 // 居中标题
                 Text(folder.name)
@@ -45,9 +45,7 @@ struct NoteListView: View {
                 HStack {
                     // 左侧：返回按钮
                     Button(action: {
-                        withAnimation(.navigationPop) {
-                            onBack()
-                        }
+                        onBack()
                     }) {
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.left")
@@ -102,58 +100,34 @@ struct NoteListView: View {
             Divider()
             
             // 笔记列表
-            if notes.isEmpty {
-                // 空状态
-                VStack(spacing: 16) {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 60))
-                        .foregroundColor(.gray)
-                        .padding(.bottom, 8)
-                    
-                    Text("没有笔记")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    
-                    Text("点击右上角按钮添加新笔记")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(.systemGroupedBackground))
-            } else {
-                List(selection: $noteViewModel.selectedNote) {
-                    ForEach(notes) { note in
-                        Button(action: {
-                            withAnimation(.navigationPush) {
-                                noteViewModel.selectedNote = note
-                            }
-                        }) {
-                            NoteRow(note: note)
-                                .tag(note)
-                                .environmentObject(noteViewModel)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .transition(.slide)
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                noteViewModel.deleteNote(note: note)
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                            
-                            Button {
-                                showMoveNoteSheet(note)
-                            } label: {
-                                Label("移动", systemImage: "folder")
-                            }
-                            .tint(.blue)
-                        }
+            List(selection: $noteViewModel.selectedNote) {
+                ForEach(notes) { note in
+                    Button(action: {
+                        noteViewModel.selectedNote = note
+                    }) {
+                        NoteRow(note: note)
+                            .tag(note)
+                            .environmentObject(noteViewModel)
                     }
-                    .onDelete(perform: deleteNote)
+                    .buttonStyle(PlainButtonStyle())
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            noteViewModel.deleteNote(note: note)
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                        
+                        Button {
+                            showMoveNoteSheet(note)
+                        } label: {
+                            Label("移动", systemImage: "folder")
+                        }
+                        .tint(.blue)
+                    }
                 }
-                .listStyle(PlainListStyle())
+                .onDelete(perform: deleteNote)
             }
+            .listStyle(PlainListStyle())
         }
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
@@ -161,7 +135,7 @@ struct NoteListView: View {
             refreshData()
         }
         .onChange(of: noteViewModel.noteUpdated) { _, _ in
-            // 当笔记数据更新时，刷新列表
+            // 笔记更新时刷新数据
             refreshData()
         }
         // 笔记移动面板
