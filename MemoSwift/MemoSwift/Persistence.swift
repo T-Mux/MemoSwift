@@ -207,10 +207,9 @@ class PersistenceController {
                             if let newError = newError {
                                 print("尝试禁用CloudKit后仍然无法加载存储: \(newError)")
                                 print("尝试禁用CloudKit后仍然无法加载存储: \(newError.localizedDescription)")
-                                NotificationCenter.default.post(
-                                    name: NSNotification.Name("AppError"),
-                                    object: newError
-                                )
+                                
+                                // 最后尝试：创建纯本地存储，不使用任何高级功能
+                                self.createLocalOnlyStore()
                             } else {
                                 print("禁用CloudKit后成功加载持久化存储")
                             }
@@ -220,52 +219,37 @@ class PersistenceController {
                 } else if error.domain == NSCocoaErrorDomain && 
                           (error.code == NSPersistentStoreIncompatibleVersionHashError || 
                            error.code == NSMigrationError || 
-                           error.code == NSMigrationMissingSourceModelError) {
+                           error.code == NSMigrationMissingSourceModelError ||
+                           error.code == 134060) { // CloudKit schema compatibility error
                     // 处理模型不兼容或迁移错误
-                    print("检测到模型版本不兼容，尝试删除现有存储并重新创建")
-                    // 直接在此处实现重建存储的逻辑
-                    let storeURL = self.container.persistentStoreDescriptions.first?.url
-                    if let url = storeURL {
-                        let fileManager = FileManager.default
-                        let sqliteFiles = [
-                            url,
-                            url.appendingPathExtension("shm"),
-                            url.appendingPathExtension("wal")
-                        ]
+                    print("检测到模型版本不兼容或CloudKit架构不兼容，尝试删除现有存储并重新创建")
+                    // 禁用CloudKit然后重建存储
+                    if let description = self.container.persistentStoreDescriptions.first {
+                        description.cloudKitContainerOptions = nil
                         
-                        for fileURL in sqliteFiles {
-                            do {
-                                if fileManager.fileExists(atPath: fileURL.path) {
-                                    try fileManager.removeItem(at: fileURL)
-                                    print("已删除文件: \(fileURL.path)")
-                                }
-                            } catch {
-                                print("删除文件失败: \(fileURL.path), 错误: \(error)")
-                            }
-                        }
+                        // 删除现有存储文件
+                        self.deleteStoreFiles()
                         
                         // 重新加载存储
                         self.container.loadPersistentStores { (newStoreDescription, newError) in
                             if let newError = newError {
                                 print("重新创建存储后仍然失败: \(newError)")
-                                NotificationCenter.default.post(
-                                    name: NSNotification.Name("AppError"),
-                                    object: newError
-                                )
+                                
+                                // 最后尝试：创建纯本地存储
+                                self.createLocalOnlyStore()
                             } else {
                                 print("成功重新创建并加载存储")
                             }
                         }
+                        return
                     }
-                    return
                 }
                 
                 // 发送通知以显示错误
                 print("🔴 持久化存储错误: \(error.localizedDescription)")
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("AppError"),
-                    object: error
-                )
+                
+                // 最后尝试：总是确保我们有一个工作的存储
+                self.createLocalOnlyStore()
             } else {
                 print("成功加载持久化存储: \(storeDescription)")
             }
@@ -338,6 +322,12 @@ class PersistenceController {
         noteContentAttribute.attributeType = .stringAttributeType
         noteContentAttribute.isOptional = true
         
+        // 添加富文本内容属性
+        let noteRichContentAttribute = NSAttributeDescription()
+        noteRichContentAttribute.name = "richContent"
+        noteRichContentAttribute.attributeType = .binaryDataAttributeType
+        noteRichContentAttribute.isOptional = true
+        
         let noteCreatedAtAttribute = NSAttributeDescription()
         noteCreatedAtAttribute.name = "createdAt"
         noteCreatedAtAttribute.attributeType = .dateAttributeType
@@ -348,7 +338,41 @@ class PersistenceController {
         noteUpdatedAtAttribute.attributeType = .dateAttributeType
         noteUpdatedAtAttribute.isOptional = true
         
-        // 创建关系
+        // 创建Image实体
+        let imageEntity = NSEntityDescription()
+        imageEntity.name = "Image"
+        imageEntity.managedObjectClassName = "Image"
+        
+        let imageIdAttribute = NSAttributeDescription()
+        imageIdAttribute.name = "id"
+        imageIdAttribute.attributeType = .UUIDAttributeType
+        imageIdAttribute.isOptional = true
+        
+        let imageDataAttribute = NSAttributeDescription()
+        imageDataAttribute.name = "data"
+        imageDataAttribute.attributeType = .binaryDataAttributeType
+        imageDataAttribute.isOptional = true
+        
+        let imageCreatedAtAttribute = NSAttributeDescription()
+        imageCreatedAtAttribute.name = "createdAt"
+        imageCreatedAtAttribute.attributeType = .dateAttributeType
+        imageCreatedAtAttribute.isOptional = true
+        
+        // 创建Note和Image之间的关系
+        let noteToImagesRelationship = NSRelationshipDescription()
+        noteToImagesRelationship.name = "images"
+        noteToImagesRelationship.destinationEntity = imageEntity
+        noteToImagesRelationship.isOptional = true
+        noteToImagesRelationship.deleteRule = .cascadeDeleteRule
+        
+        let imageToNoteRelationship = NSRelationshipDescription()
+        imageToNoteRelationship.name = "note"
+        imageToNoteRelationship.destinationEntity = noteEntity
+        imageToNoteRelationship.isOptional = true
+        imageToNoteRelationship.deleteRule = .nullifyDeleteRule
+        imageToNoteRelationship.maxCount = 1
+        
+        // 创建Note和Folder之间的关系
         let notesToFolderRelationship = NSRelationshipDescription()
         notesToFolderRelationship.name = "folder"
         notesToFolderRelationship.destinationEntity = folderEntity
@@ -383,15 +407,39 @@ class PersistenceController {
         childToParentRelationship.inverseRelationship = parentToChildrenRelationship
         parentToChildrenRelationship.inverseRelationship = childToParentRelationship
         
-        // 设置实体的属性
-        noteEntity.properties = [noteIdAttribute, noteTitleAttribute, noteContentAttribute, 
-                                 noteCreatedAtAttribute, noteUpdatedAtAttribute, notesToFolderRelationship]
+        noteToImagesRelationship.inverseRelationship = imageToNoteRelationship
+        imageToNoteRelationship.inverseRelationship = noteToImagesRelationship
         
-        folderEntity.properties = [folderIdAttribute, folderNameAttribute, folderCreatedAtAttribute, 
-                                  folderToNotesRelationship, childToParentRelationship, parentToChildrenRelationship]
+        // 设置实体的属性
+        noteEntity.properties = [
+            noteIdAttribute, 
+            noteTitleAttribute, 
+            noteContentAttribute,
+            noteRichContentAttribute,
+            noteCreatedAtAttribute, 
+            noteUpdatedAtAttribute, 
+            notesToFolderRelationship,
+            noteToImagesRelationship
+        ]
+        
+        folderEntity.properties = [
+            folderIdAttribute, 
+            folderNameAttribute, 
+            folderCreatedAtAttribute, 
+            folderToNotesRelationship, 
+            childToParentRelationship, 
+            parentToChildrenRelationship
+        ]
+        
+        imageEntity.properties = [
+            imageIdAttribute,
+            imageDataAttribute,
+            imageCreatedAtAttribute,
+            imageToNoteRelationship
+        ]
         
         // 将实体添加到模型
-        model.entities = [folderEntity, noteEntity]
+        model.entities = [folderEntity, noteEntity, imageEntity]
         
         print("成功动态创建模型，实体数量: \(model.entities.count)")
         return model
@@ -411,6 +459,96 @@ extension URL {
 }
 
 extension PersistenceController {
+    // 删除存储文件
+    private func deleteStoreFiles() {
+        let storeURL = self.container.persistentStoreDescriptions.first?.url
+        if let url = storeURL {
+            let fileManager = FileManager.default
+            let sqliteFiles = [
+                url,
+                url.appendingPathExtension("shm"),
+                url.appendingPathExtension("wal")
+            ]
+            
+            for fileURL in sqliteFiles {
+                do {
+                    if fileManager.fileExists(atPath: fileURL.path) {
+                        try fileManager.removeItem(at: fileURL)
+                        print("已删除文件: \(fileURL.path)")
+                    }
+                } catch {
+                    print("删除文件失败: \(fileURL.path), 错误: \(error)")
+                }
+            }
+        }
+    }
+    
+    // 创建纯本地存储 - 没有CloudKit、没有历史跟踪等
+    private func createLocalOnlyStore() {
+        print("尝试创建纯本地存储...")
+        
+        // 删除旧的存储文件
+        deleteStoreFiles()
+        
+        // 创建一个简单的本地存储描述
+        let storeDescription = NSPersistentStoreDescription()
+        if let storeURL = container.persistentStoreDescriptions.first?.url {
+            storeDescription.url = storeURL
+        } else {
+            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            storeDescription.url = documentsDirectory.appendingPathComponent("LocalMemoSwift.sqlite")
+        }
+        
+        // 禁用所有高级功能
+        storeDescription.cloudKitContainerOptions = nil
+        storeDescription.setOption(false as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+        storeDescription.setOption(false as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+        
+        container.persistentStoreDescriptions = [storeDescription]
+        
+        // 加载存储
+        container.loadPersistentStores { (storeDescription, error) in
+            if let error = error {
+                print("纯本地存储创建失败: \(error.localizedDescription)")
+                
+                // 如果仍然失败，使用内存存储作为最后的备选
+                self.useInMemoryStore()
+            } else {
+                print("成功创建并加载纯本地存储")
+            }
+        }
+    }
+    
+    // 使用内存存储作为最后的备选方案
+    private func useInMemoryStore() {
+        print("使用内存存储...")
+        
+        let storeDescription = NSPersistentStoreDescription()
+        storeDescription.type = NSInMemoryStoreType
+        
+        container.persistentStoreDescriptions = [storeDescription]
+        
+        container.loadPersistentStores { (storeDescription, error) in
+            if let error = error {
+                print("内存存储创建也失败了: \(error.localizedDescription)")
+                
+                // 向用户显示严重错误
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("AppError"),
+                        object: NSError(
+                            domain: "com.yourdomain.MemoSwift",
+                            code: 1001,
+                            userInfo: [NSLocalizedDescriptionKey: "无法创建数据存储，应用可能无法正常工作"]
+                        )
+                    )
+                }
+            } else {
+                print("成功创建并加载内存存储 (临时数据)")
+            }
+        }
+    }
+    
     // 处理持久化存储错误
     func handlePersistentStoreError(_ error: NSError) {
         print("🔴 持久化存储错误: \(error.localizedDescription)")
@@ -433,36 +571,17 @@ extension PersistenceController {
     func recreatePersistentStore() {
         print("尝试重新创建持久化存储...")
         
-        guard let storeDescription = container.persistentStoreDescriptions.first,
-              let storeURL = storeDescription.url else {
-            print("无法获取存储URL")
-            return
-        }
-        
         // 删除旧的存储文件
-        let fileManager = FileManager.default
-        let sqliteFiles = [
-            storeURL,
-            storeURL.appendingPathExtension("shm"),
-            storeURL.appendingPathExtension("wal")
-        ]
-        
-        for url in sqliteFiles {
-            do {
-                if fileManager.fileExists(atPath: url.path) {
-                    try fileManager.removeItem(at: url)
-                    print("已删除文件: \(url.path)")
-                }
-            } catch {
-                print("删除文件失败: \(url.path), 错误: \(error)")
-            }
-        }
+        deleteStoreFiles()
         
         // 重新加载存储
         container.loadPersistentStores { (storeDescription, error) in
             if let error = error as NSError? {
                 print("重新创建存储后仍然失败: \(error)")
                 self.handlePersistentStoreError(error)
+                
+                // 尝试创建本地存储
+                self.createLocalOnlyStore()
             } else {
                 print("成功重新创建并加载存储")
             }

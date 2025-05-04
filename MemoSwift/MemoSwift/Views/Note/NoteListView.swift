@@ -48,7 +48,7 @@ struct NoteListView: View {
                         onBack()
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            SwiftUI.Image(systemName: "chevron.left")
                                 .font(.body)
                             Text("文件夹")
                                 .font(.body)
@@ -83,7 +83,7 @@ struct NoteListView: View {
                             Label("OCR文字识别", systemImage: "text.viewfinder")
                         }
                     } label: {
-                        Image(systemName: "plus")
+                        SwiftUI.Image(systemName: "plus")
                             .font(.title3)
                             .foregroundColor(.blue)
                             .frame(width: 44, height: 44)

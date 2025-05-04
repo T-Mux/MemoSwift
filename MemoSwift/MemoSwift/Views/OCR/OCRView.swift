@@ -10,7 +10,7 @@ struct OCRView: View {
     
     @State private var selectedImage: UIImage?
     @State private var isImagePickerPresented = false
-    @State private var imageSource: ImageSource = .photoLibrary
+    @State private var imageSource: PhotoSource = .photoLibrary
     @State private var recognizedText: String = ""
     @State private var isProcessing = false
     @State private var showAlert = false
@@ -49,7 +49,7 @@ struct OCRView: View {
                         // 图片选择部分
                         VStack {
                             if let image = selectedImage {
-                                Image(uiImage: image)
+                                SwiftUI.Image(uiImage: image)
                                     .resizable()
                                     .scaledToFit()
                                     .frame(maxHeight: 200)
@@ -121,9 +121,9 @@ struct OCRView: View {
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $isImagePickerPresented) {
-                ImagePicker(selectedImage: $selectedImage,
-                            isPresented: $isImagePickerPresented,
-                            source: imageSource)
+                PhotoPicker(
+                    selectedImage: $selectedImage,
+                    sourceType: imageSource == .camera ? .camera : .photoLibrary)
                     .onDisappear {
                         if let image = selectedImage {
                             performOCR(on: image)

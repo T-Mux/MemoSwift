@@ -146,7 +146,7 @@ struct ContentView: View {
 struct EmptyNoteSelectionView: View {
     var body: some View {
         VStack {
-            Image(systemName: "folder.badge.questionmark")
+            SwiftUI.Image(systemName: "folder.badge.questionmark")
                 .font(.system(size: 50))
                 .foregroundColor(.blue)
                 .padding()

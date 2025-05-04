@@ -207,7 +207,7 @@ struct NoteMoveTargetSelectionView: View {
                     
                     // 文件夹图标，如果有子文件夹则显示折叠/展开图标
                     if hasChildren {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        SwiftUI.Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.system(size: 12))
                             .foregroundColor(.gray)
                             .frame(width: 12, height: 12)
@@ -217,7 +217,7 @@ struct NoteMoveTargetSelectionView: View {
                             .frame(width: 12, height: 12)
                     }
                     
-                    Image(systemName: "folder.fill")
+                    SwiftUI.Image(systemName: "folder.fill")
                         .foregroundColor(.blue)
                         .frame(width: 20, height: 20)
                     
@@ -227,7 +227,7 @@ struct NoteMoveTargetSelectionView: View {
                     Spacer()
                     
                     if selectedFolder == folder {
-                        Image(systemName: "checkmark.circle.fill")
+                        SwiftUI.Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.blue)
                             .frame(width: 20, height: 20)
                     }
@@ -290,7 +290,7 @@ struct ChildFolderRow: View {
                     
                     // 文件夹图标，如果有子文件夹则显示折叠/展开图标
                     if hasChildren {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        SwiftUI.Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.system(size: 12))
                             .foregroundColor(.gray)
                             .frame(width: 12, height: 12)
@@ -300,7 +300,7 @@ struct ChildFolderRow: View {
                             .frame(width: 12, height: 12)
                     }
                     
-                    Image(systemName: "folder.fill")
+                    SwiftUI.Image(systemName: "folder.fill")
                         .foregroundColor(.blue)
                         .frame(width: 20, height: 20)
                     
@@ -310,7 +310,7 @@ struct ChildFolderRow: View {
                     Spacer()
                     
                     if selectedFolder == folder {
-                        Image(systemName: "checkmark.circle.fill")
+                        SwiftUI.Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.blue)
                             .frame(width: 20, height: 20)
                     }
@@ -347,7 +347,7 @@ struct NoteSearchBar: View {
     
     var body: some View {
         HStack {
-            Image(systemName: "magnifyingglass")
+            SwiftUI.Image(systemName: "magnifyingglass")
                 .foregroundColor(.gray)
             
             TextField(placeholder, text: $text)
@@ -357,7 +357,7 @@ struct NoteSearchBar: View {
                 Button(action: {
                     text = ""
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    SwiftUI.Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.gray)
                 }
             }

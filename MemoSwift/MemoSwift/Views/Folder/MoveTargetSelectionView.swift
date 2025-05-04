@@ -89,7 +89,7 @@ struct MoveTargetSelectionView: View {
                             selectedTarget = nil
                         }) {
                             HStack(spacing: 10) {
-                                Image(systemName: "house.fill")
+                                SwiftUI.Image(systemName: "house.fill")
                                     .foregroundColor(.blue)
                                     .frame(width: 20, height: 20)
                                 
@@ -99,7 +99,7 @@ struct MoveTargetSelectionView: View {
                                 Spacer()
                                 
                                 if selectedTarget == nil {
-                                    Image(systemName: "checkmark.circle.fill")
+                                    SwiftUI.Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.blue)
                                         .frame(width: 20, height: 20)
                                 }
@@ -132,7 +132,7 @@ struct MoveTargetSelectionView: View {
                                     selectedTarget = folder
                                 }) {
                                     HStack(spacing: 10) {
-                                        Image(systemName: "folder.fill")
+                                        SwiftUI.Image(systemName: "folder.fill")
                                             .foregroundColor(.blue)
                                             .frame(width: 20, height: 20)
                                         
@@ -152,7 +152,7 @@ struct MoveTargetSelectionView: View {
                                         Spacer()
                                         
                                         if selectedTarget == folder {
-                                            Image(systemName: "checkmark.circle.fill")
+                                            SwiftUI.Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.blue)
                                                 .frame(width: 20, height: 20)
                                         }
@@ -184,7 +184,7 @@ struct FolderSearchBar: View {
     
     var body: some View {
         HStack {
-            Image(systemName: "magnifyingglass")
+            SwiftUI.Image(systemName: "magnifyingglass")
                 .foregroundColor(.gray)
             
             TextField(placeholder, text: $text)
@@ -194,7 +194,7 @@ struct FolderSearchBar: View {
                 Button(action: {
                     text = ""
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    SwiftUI.Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.gray)
                 }
             }

@@ -135,6 +135,43 @@ struct MemoSwiftApp: App {
             }
         }
     }
+    
+    // 重置Core Data数据库
+    private func resetCoreDataDatabase() {
+        guard let storeDescription = persistenceController.container.persistentStoreDescriptions.first,
+              let storeURL = storeDescription.url else {
+            print("无法获取Core Data存储URL")
+            return
+        }
+        
+        // 删除现有数据库文件
+        let fileManager = FileManager.default
+        let sqliteFiles = [
+            storeURL,
+            storeURL.appendingPathExtension("shm"),
+            storeURL.appendingPathExtension("wal")
+        ]
+        
+        for url in sqliteFiles {
+            do {
+                if fileManager.fileExists(atPath: url.path) {
+                    try fileManager.removeItem(at: url)
+                    print("已删除Core Data文件: \(url.path)")
+                }
+            } catch {
+                print("删除Core Data文件失败: \(url.path), 错误: \(error)")
+            }
+        }
+        
+        // 重新加载持久化存储
+        persistenceController.container.loadPersistentStores { (storeDescription, error) in
+            if let error = error {
+                print("重新加载Core Data存储失败: \(error.localizedDescription)")
+            } else {
+                print("成功重新创建Core Data数据库")
+            }
+        }
+    }
 }
 
 struct ErrorOverlayView: View {
@@ -147,7 +184,7 @@ struct ErrorOverlayView: View {
                 .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 20) {
-                Image(systemName: "exclamationmark.circle.fill")
+                SwiftUI.Image(systemName: "exclamationmark.circle.fill")
                     .font(.system(size: 50))
                     .foregroundColor(.red)
                 

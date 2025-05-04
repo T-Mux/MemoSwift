@@ -29,7 +29,7 @@ struct SearchResultsView: View {
                 } else if searchViewModel.searchResults.isEmpty && !searchViewModel.searchQuery.isEmpty {
                     // 无结果状态
                     VStack(spacing: 16) {
-                        Image(systemName: "magnifyingglass")
+                        SwiftUI.Image(systemName: "magnifyingglass")
                             .font(.system(size: 50))
                             .foregroundColor(.gray)
                             .padding()
@@ -54,7 +54,7 @@ struct SearchResultsView: View {
                 } else if searchViewModel.searchQuery.isEmpty {
                     // 初始状态
                     VStack(spacing: 16) {
-                        Image(systemName: "magnifyingglass")
+                        SwiftUI.Image(systemName: "magnifyingglass")
                             .font(.system(size: 50))
                             .foregroundColor(.gray)
                             .padding()
@@ -115,7 +115,7 @@ struct SearchResultRow: View {
             // 标题行
             HStack(alignment: .center, spacing: 12) {
                 // 笔记图标
-                Image(systemName: "doc.text")
+                SwiftUI.Image(systemName: "doc.text")
                     .foregroundColor(.blue)
                     .font(.system(size: 20))
                 
@@ -127,7 +127,7 @@ struct SearchResultRow: View {
                     
                     // 文件夹位置
                     HStack(spacing: 4) {
-                        Image(systemName: "folder")
+                        SwiftUI.Image(systemName: "folder")
                             .font(.system(size: 12))
                             .foregroundColor(.gray)
                         

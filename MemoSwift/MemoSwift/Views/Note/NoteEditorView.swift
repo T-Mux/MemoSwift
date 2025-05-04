@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import UIKit
+import Vision
 
 struct NoteEditorView: View {
     let note: Note
@@ -13,7 +15,14 @@ struct NoteEditorView: View {
     var onBack: () -> Void  // 返回回调
     
     @State private var title: String
-    @State private var content: String
+    @State private var attributedContent: NSAttributedString
+    @State private var showingImageOptions = false
+    @State private var showingImagePicker = false
+    @State private var imageSource: PhotoSource = .photoLibrary
+    @State private var selectedImage: UIImage?
+    @State private var showingOCRView = false
+    @State private var focusTextEditor = false
+    
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
     @State private var debounceTimer: Timer?
@@ -24,7 +33,7 @@ struct NoteEditorView: View {
         self.onBack = onBack
         
         _title = State(initialValue: note.wrappedTitle)
-        _content = State(initialValue: note.wrappedContent)
+        _attributedContent = State(initialValue: note.wrappedRichContent)
     }
     
     var body: some View {
@@ -56,7 +65,7 @@ struct NoteEditorView: View {
                         }
                     }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
+                            SwiftUI.Image(systemName: "chevron.left")
                                 .font(.body)
                             Text("返回")
                                 .font(.body)
@@ -66,13 +75,8 @@ struct NoteEditorView: View {
                         .foregroundColor(.blue)
                     }
                     .padding(.leading)
-                    .frame(width: 100, alignment: .leading)
                     
                     Spacer()
-                    
-                    // 右侧：预留空间保持对称
-                    Spacer()
-                        .frame(width: 100)
                 }
             }
             .padding(.vertical, 8)
@@ -91,14 +95,35 @@ struct NoteEditorView: View {
             
             Divider()
             
-            // 内容输入区
-            TextEditor(text: $content)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .background(Color(.systemBackground))
-                .onChange(of: content) { _, _ in
-                    debounceSave()
+            // 显示已添加的图片
+            if !note.imagesArray.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(note.imagesArray, id: \.wrappedID) { imageEntity in
+                            NoteImageView(imageData: imageEntity.wrappedData)
+                                .frame(height: 120)
+                                .frame(width: 150)
+                        }
+                    }
+                    .padding(.horizontal)
                 }
+                .padding(.vertical, 8)
+                Divider()
+            }
+            
+            // 富文本编辑器
+            RichTextEditor(attributedText: $attributedContent, focus: $focusTextEditor, onCommit: { updatedText in
+                self.attributedContent = updatedText
+                debounceSave()
+            })
+            .padding([.horizontal, .top], 8)
+            .background(Color(.systemBackground))
+            .onAppear {
+                // 延迟短暂时间后使文本编辑器获得焦点
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    focusTextEditor = true
+                }
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .onDisappear {
@@ -106,10 +131,87 @@ struct NoteEditorView: View {
             debounceTimer?.invalidate()
             saveChanges()
             
+            // 移除通知观察者
+            NotificationCenter.default.removeObserver(self)
+            
             // 强制刷新确保所有更改可见
             noteViewModel.forceRefresh()
         }
         .transition(.move(edge: .trailing))
+        // 监听富文本编辑器的图片请求通知
+        .onAppear {
+            // 添加通知观察者
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("RichTextEditorImageRequest"),
+                object: nil,
+                queue: .main
+            ) { [self] notification in
+                if let userInfo = notification.userInfo,
+                   let source = userInfo["source"] as? ImageSource {
+                    handleImageRequest(source: source)
+                }
+            }
+        }
+        .sheet(isPresented: $showingImagePicker) {
+            PhotoPicker(
+                selectedImage: $selectedImage,
+                sourceType: imageSource == .camera ? .camera : .photoLibrary,
+                onImagePicked: { image in
+                    if let imageData = image.jpegData(compressionQuality: 0.7) {
+                        noteViewModel.addImage(to: note, imageData: imageData)
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $showingOCRView) {
+            OCRProcessView(
+                onProcessed: { result in
+                    // 处理OCR结果
+                    handleOCRResult(result)
+                    showingOCRView = false
+                },
+                onDismiss: {
+                    showingOCRView = false
+                }
+            )
+        }
+    }
+    
+    // 处理富文本编辑器的图片请求
+    private func handleImageRequest(source: ImageSource) {
+        // 确保我们使用的是正确的枚举类型
+        switch source {
+        case .camera:
+            imageSource = .camera
+            showingImagePicker = true
+        case .photoLibrary:
+            imageSource = .photoLibrary
+            showingImagePicker = true
+        case .ocr:
+            showingOCRView = true
+        }
+    }
+    
+    // 处理OCR结果
+    private func handleOCRResult(_ result: OCRResult) {
+        // 保存图片
+        if let imageData = result.image.jpegData(compressionQuality: 0.7) {
+            noteViewModel.addImage(to: note, imageData: imageData)
+        }
+        
+        // 将识别出的文本添加到当前笔记内容中
+        if !result.text.isEmpty {
+            // 创建一个新的可变属性字符串
+            let currentText = attributedContent.string
+            let newText = currentText.isEmpty ? result.text : "\n\n\(result.text)"
+            
+            let mutableAttributedString = NSMutableAttributedString(attributedString: attributedContent)
+            let textToAdd = NSAttributedString(string: newText)
+            mutableAttributedString.append(textToAdd)
+            
+            attributedContent = mutableAttributedString
+            debounceSave()
+        }
     }
     
     // 延迟保存 - 使用计时器防抖
@@ -125,16 +227,11 @@ struct NoteEditorView: View {
     
     // 保存所有更改
     private func saveChanges() {
-        // 仅当内容有变化时才更新
-        if note.title != title || note.content != content {
-            noteViewModel.updateNote(
-                note: note,
-                title: title,
-                content: content
-            )
-            
-            // 强制保存并刷新
-            try? viewContext.save()
-        }
+        // 更新笔记，使用富文本内容
+        noteViewModel.updateNoteWithRichContent(
+            note: note,
+            title: title,
+            attributedContent: attributedContent
+        )
     }
 } 

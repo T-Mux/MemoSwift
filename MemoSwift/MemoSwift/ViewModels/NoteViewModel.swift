@@ -9,6 +9,8 @@ import Foundation
 import CoreData
 import SwiftUI
 import Combine
+import UIKit
+import Vision
 
 class NoteViewModel: ObservableObject {
     private var viewContext: NSManagedObjectContext
@@ -39,7 +41,7 @@ class NoteViewModel: ObservableObject {
         return newNote
     }
     
-    // 更新笔记内容
+    // 更新笔记内容（普通文本）
     func updateNote(note: Note, title: String, content: String) {
         // 只有当内容真正改变时才更新
         if note.title != title || note.content != content {
@@ -50,6 +52,81 @@ class NoteViewModel: ObservableObject {
             saveContext()
             // 通知刷新
             noteUpdated = UUID()
+        }
+    }
+    
+    // 更新笔记富文本内容
+    func updateNoteWithRichContent(note: Note, title: String, attributedContent: NSAttributedString) {
+        note.title = title
+        
+        // 将富文本内容转换为普通文本保存
+        note.content = attributedContent.string
+        
+        // 保存富文本内容
+        do {
+            let rtfdData = try attributedContent.data(
+                from: NSRange(location: 0, length: attributedContent.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+            )
+            note.richContent = rtfdData
+        } catch {
+            print("保存富文本内容出错: \(error)")
+            // 失败则只保存普通文本
+            note.content = attributedContent.string
+        }
+        
+        note.updatedAt = Date()
+        saveContext()
+        noteUpdated = UUID()
+    }
+    
+    // 添加图片到笔记
+    func addImage(to note: Note, imageData: Data) {
+        let newImage = Image.createImage(withData: imageData, in: viewContext)
+        newImage.note = note
+        note.addImage(newImage)
+        note.updatedAt = Date()
+        
+        saveContext()
+        noteUpdated = UUID()
+    }
+    
+    // 从图片中提取文本(OCR)
+    func performOCR(from imageData: Data, completion: @escaping (String?) -> Void) {
+        guard let image = UIImage(data: imageData) else {
+            completion(nil)
+            return
+        }
+        
+        guard let cgImage = image.cgImage else {
+            completion(nil)
+            return
+        }
+        
+        let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        let request = VNRecognizeTextRequest { request, error in
+            guard let observations = request.results as? [VNRecognizedTextObservation],
+                  error == nil else {
+                completion(nil)
+                return
+            }
+            
+            let text = observations.compactMap { observation in
+                observation.topCandidates(1).first?.string
+            }.joined(separator: "\n")
+            
+            completion(text)
+        }
+        
+        // 配置识别请求参数
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        
+        do {
+            try requestHandler.perform([request])
+        } catch {
+            print("执行OCR识别失败: \(error)")
+            completion(nil)
         }
     }
     

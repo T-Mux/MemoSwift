@@ -7,15 +7,18 @@
 
 import Foundation
 import CoreData
+import UIKit
 
 @objc(Note)
 public class Note: NSManagedObject, Identifiable {
     @NSManaged public var id: UUID?
     @NSManaged public var title: String
     @NSManaged public var content: String?
+    @NSManaged public var richContent: Data?
     @NSManaged public var createdAt: Date?
     @NSManaged public var updatedAt: Date?
     @NSManaged public var folder: Folder?
+    @NSManaged public var images: NSSet?
     
     // 获取标题（防止空值）
     public var wrappedTitle: String {
@@ -25,6 +28,24 @@ public class Note: NSManagedObject, Identifiable {
     // 获取内容（防止空值）
     public var wrappedContent: String {
         content ?? ""
+    }
+    
+    // 获取富文本内容
+    public var wrappedRichContent: NSAttributedString {
+        if let data = richContent, let attributedString = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtfd, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil) {
+            return attributedString
+        }
+        
+        // 如果没有富文本内容或者无法解析，则返回普通文本
+        return NSAttributedString(string: wrappedContent)
+    }
+    
+    // 获取图片数组
+    public var imagesArray: [Image] {
+        let set = images ?? []
+        return set.compactMap { $0 as? Image }.sorted {
+            $0.wrappedCreatedAt < $1.wrappedCreatedAt
+        }
     }
     
     // 格式化日期显示
@@ -48,5 +69,12 @@ extension Note {
         request.predicate = NSPredicate(format: "folder == %@", folder)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
         return request
+    }
+    
+    // 添加图片到笔记
+    func addImage(_ image: Image) {
+        let images = self.images?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
+        images.add(image)
+        self.images = images
     }
 } 

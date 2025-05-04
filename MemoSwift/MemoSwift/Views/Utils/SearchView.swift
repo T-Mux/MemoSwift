@@ -23,7 +23,7 @@ struct SearchView: View {
                 HStack {
                     // 搜索图标和文本框
                     HStack {
-                        Image(systemName: "magnifyingglass")
+                        SwiftUI.Image(systemName: "magnifyingglass")
                             .foregroundColor(.gray)
                             .padding(.leading, 8)
                         
@@ -49,7 +49,7 @@ struct SearchView: View {
                                 searchViewModel.searchQuery = ""
                                 searchViewModel.resetSearch()
                             }) {
-                                Image(systemName: "xmark.circle.fill")
+                                SwiftUI.Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.gray)
                                     .padding(.trailing, 8)
                             }
@@ -115,7 +115,7 @@ struct SearchView: View {
                         HStack {
                             Text(searchViewModel.searchMode.rawValue)
                                 .font(.caption)
-                            Image(systemName: "chevron.down")
+                            SwiftUI.Image(systemName: "chevron.down")
                                 .font(.caption2)
                         }
                         .foregroundColor(.blue)
@@ -126,7 +126,7 @@ struct SearchView: View {
                     Button(action: {
                         presentationMode.wrappedValue.dismiss()
                     }) {
-                        Image(systemName: "xmark")
+                        SwiftUI.Image(systemName: "xmark")
                             .foregroundColor(.primary)
                     }
                 }

@@ -46,7 +46,7 @@ struct FolderListView: View {
                     }) {
                         HStack(spacing: 8) {
                             // 文件夹图标
-                            Image(systemName: "folder.fill")
+                            SwiftUI.Image(systemName: "folder.fill")
                                 .foregroundColor(.blue)
                                 .font(.headline)
                             
@@ -59,7 +59,7 @@ struct FolderListView: View {
                                         .lineLimit(1)
                                         .truncationMode(.tail)
                                     
-                                    Image(systemName: "chevron.down")
+                                    SwiftUI.Image(systemName: "chevron.down")
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                 }
@@ -79,7 +79,7 @@ struct FolderListView: View {
                     }) {
                         HStack(spacing: 8) {
                             // 文件夹图标
-                            Image(systemName: "folder.fill")
+                            SwiftUI.Image(systemName: "folder.fill")
                                 .foregroundColor(.blue)
                                 .font(.headline)
                             
@@ -91,7 +91,7 @@ struct FolderListView: View {
                                         .fontWeight(.semibold)
                                         .lineLimit(1)
                                     
-                                    Image(systemName: "chevron.down")
+                                    SwiftUI.Image(systemName: "chevron.down")
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                 }
@@ -126,7 +126,7 @@ struct FolderListView: View {
                             }
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
+                                SwiftUI.Image(systemName: "chevron.left")
                                     .font(.body)
                                 Text(selectedFolder.parentFolder != nil ? selectedFolder.parentFolder!.name : "文件夹")
                                     .fontWeight(.medium)
@@ -180,7 +180,7 @@ struct FolderListView: View {
                             Label("搜索笔记", systemImage: "magnifyingglass")
                         }
                     } label: {
-                        Image(systemName: "plus")
+                        SwiftUI.Image(systemName: "plus")
                             .font(.title3)
                             .foregroundColor(.blue)
                             .padding(8)
@@ -374,7 +374,7 @@ struct FolderListView: View {
                         }
                     }) {
                         HStack(spacing: 12) {
-                            Image(systemName: "house.fill")
+                            SwiftUI.Image(systemName: "house.fill")
                                 .font(.title3)
                                 .foregroundColor(.blue)
                                 .frame(width: 25, height: 25)
@@ -391,7 +391,7 @@ struct FolderListView: View {
                             Spacer()
                             
                             if folderViewModel.selectedFolder == nil {
-                                Image(systemName: "checkmark")
+                                SwiftUI.Image(systemName: "checkmark")
                                     .foregroundColor(.blue)
                             }
                         }
@@ -413,7 +413,7 @@ struct FolderListView: View {
                                         }
                                     }) {
                                         HStack(spacing: 12) {
-                                            Image(systemName: "folder.fill")
+                                            SwiftUI.Image(systemName: "folder.fill")
                                                 .font(.title3)
                                                 .foregroundColor(.blue)
                                                 .frame(width: 25, height: 25)
@@ -430,7 +430,7 @@ struct FolderListView: View {
                                             Spacer()
                                             
                                             if folder.id == folderViewModel.selectedFolder?.id {
-                                                Image(systemName: "checkmark")
+                                                SwiftUI.Image(systemName: "checkmark")
                                                     .foregroundColor(.blue)
                                             }
                                         }
@@ -444,7 +444,7 @@ struct FolderListView: View {
                         // 当前文件夹
                         Section(header: Text("当前位置").font(.caption).foregroundColor(.secondary)) {
                             HStack(spacing: 12) {
-                                Image(systemName: "folder.fill")
+                                SwiftUI.Image(systemName: "folder.fill")
                                     .font(.title3)
                                     .foregroundColor(.blue)
                                     .frame(width: 25, height: 25)
@@ -460,7 +460,7 @@ struct FolderListView: View {
                                 
                                 Spacer()
                                 
-                                Image(systemName: "checkmark")
+                                SwiftUI.Image(systemName: "checkmark")
                                     .foregroundColor(.blue)
                             }
                             .padding(.vertical, 4)

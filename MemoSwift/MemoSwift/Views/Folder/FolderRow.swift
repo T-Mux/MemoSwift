@@ -18,7 +18,7 @@ struct FolderRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "folder.fill")
+            SwiftUI.Image(systemName: "folder.fill")
                 .font(.title3)
                 .foregroundColor(.blue)
                 .frame(width: 30)
