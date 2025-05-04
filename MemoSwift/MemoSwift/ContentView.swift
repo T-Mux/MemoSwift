@@ -14,6 +14,7 @@ struct ContentView: View {
     
     @StateObject private var folderViewModel: FolderViewModel
     @StateObject private var noteViewModel: NoteViewModel
+    @StateObject private var searchViewModel = SearchViewModel(viewContext: PersistenceController.shared.container.viewContext)
     
     @FetchRequest(
         fetchRequest: Folder.allFoldersFetchRequest(),
@@ -23,6 +24,7 @@ struct ContentView: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var hasError = false
     @State private var errorMessage = ""
+    @State private var showSearchSheet = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     init() {
@@ -48,8 +50,30 @@ struct ContentView: View {
                             hasError = true
                             errorMessage = "无法访问数据模型: \(error.localizedDescription)"
                         }
+                        
+                        // 添加搜索通知监听
+                        setupSearchNotificationObserver()
                     }
             }
+        }
+        // 添加搜索表单
+        .sheet(isPresented: $showSearchSheet) {
+            SearchView(
+                searchViewModel: searchViewModel,
+                noteViewModel: noteViewModel,
+                folderViewModel: folderViewModel
+            )
+        }
+    }
+    
+    // 设置搜索通知监听器
+    private func setupSearchNotificationObserver() {
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("ShowSearchSheet"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            showSearchSheet = true
         }
     }
     
