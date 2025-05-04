@@ -19,6 +19,7 @@ struct NoteListView: View {
     
     @State private var showMoveSheet = false
     @State private var moveNote: Note?
+    @State private var showOCRView = false // 新增OCR视图状态
     
     init(folder: Folder, noteViewModel: NoteViewModel, onBack: @escaping () -> Void) {
         self.folder = folder
@@ -63,17 +64,28 @@ struct NoteListView: View {
                     
                     Spacer()
                     
-                    // 右侧：添加笔记按钮
-                    Button(action: {
-                        // 直接创建新笔记并选中
-                        let newNote = noteViewModel.createNote(
-                            title: "",
-                            content: "",
-                            folder: folder
-                        )
-                        noteViewModel.selectedNote = newNote
-                    }) {
-                        Image(systemName: "square.and.pencil")
+                    // 右侧：添加按钮菜单
+                    Menu {
+                        // 添加新笔记
+                        Button(action: {
+                            let newNote = noteViewModel.createNote(
+                                title: "",
+                                content: "",
+                                folder: folder
+                            )
+                            noteViewModel.selectedNote = newNote
+                        }) {
+                            Label("新建笔记", systemImage: "square.and.pencil")
+                        }
+                        
+                        // OCR文字识别
+                        Button(action: {
+                            showOCRView = true
+                        }) {
+                            Label("OCR文字识别", systemImage: "text.viewfinder")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
                             .font(.title3)
                             .foregroundColor(.blue)
                             .frame(width: 44, height: 44)
@@ -159,6 +171,10 @@ struct NoteListView: View {
                     .environmentObject(noteViewModel)
             }
         }
+        // OCR 视图
+        .sheet(isPresented: $showOCRView) {
+            OCRView(noteViewModel: noteViewModel, folder: folder)
+        }
     }
     
     // 显示笔记移动面板
@@ -183,4 +199,4 @@ struct NoteListView: View {
             noteViewModel.deleteNote(note: notes[index])
         }
     }
-} 
+}

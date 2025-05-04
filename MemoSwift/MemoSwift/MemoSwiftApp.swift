@@ -20,8 +20,8 @@ struct MemoSwiftApp: App {
     @available(iOS 14.0, macOS 11.0, *)
     static var infoPlist: [String: Any] = [
         "UIBackgroundModes": ["remote-notification"],
-        "NSCameraUsageDescription": "需要使用相机来添加图片到笔记中",
-        "NSPhotoLibraryUsageDescription": "需要访问照片库来添加图片到笔记中"
+        "NSCameraUsageDescription": "需要使用相机来拍摄图片进行OCR文字识别",
+        "NSPhotoLibraryUsageDescription": "需要访问照片库选择图片进行OCR文字识别"
     ]
     
     init() {
