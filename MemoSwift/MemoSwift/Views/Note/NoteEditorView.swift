@@ -22,6 +22,7 @@ struct NoteEditorView: View {
     @State private var selectedImage: UIImage?
     @State private var showingOCRView = false
     @State private var focusTextEditor = false
+    @FocusState private var isTitleFocused: Bool
     
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
@@ -32,8 +33,17 @@ struct NoteEditorView: View {
         self.noteViewModel = noteViewModel
         self.onBack = onBack
         
-        _title = State(initialValue: note.wrappedTitle)
-        _attributedContent = State(initialValue: note.wrappedRichContent)
+        // 刷新笔记数据，确保使用最新状态
+        let context = PersistenceController.shared.container.viewContext
+        context.refresh(note, mergeChanges: true)
+        
+        // 从笔记中获取初始值
+        let initialTitle = note.wrappedTitle
+        let initialContent = note.wrappedRichContent
+        
+        // 明确使用刚刚获取的初始值创建State对象
+        _title = State(initialValue: initialTitle)
+        _attributedContent = State(initialValue: initialContent)
     }
     
     var body: some View {
@@ -84,13 +94,26 @@ struct NoteEditorView: View {
             
             Divider()
             
-            // 标题输入框
+            // 标题输入框 - 修改为更简单的实现，避免可能的冲突
             TextField("标题", text: $title)
                 .font(.title3)
                 .padding()
                 .background(Color(.systemBackground))
+                .focused($isTitleFocused)
+                .onTapGesture {
+                    // 确保点击时获得焦点
+                    isTitleFocused = true
+                    focusTextEditor = false
+                }
                 .onChange(of: title) { _, _ in
+                    // 只需调用保存，不再重新赋值
                     debounceSave()
+                }
+                .submitLabel(.done)
+                .onSubmit {
+                    // 按下回车/完成时转移焦点到内容
+                    isTitleFocused = false
+                    focusTextEditor = true
                 }
             
             Divider()
@@ -119,9 +142,13 @@ struct NoteEditorView: View {
             .padding([.horizontal, .top], 8)
             .background(Color(.systemBackground))
             .onAppear {
-                // 延迟短暂时间后使文本编辑器获得焦点
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    focusTextEditor = true
+                // 只有在有内容且已有标题的笔记中才立即聚焦编辑器
+                // 对于新笔记，我们依赖task设置焦点
+                if !note.wrappedTitle.isEmpty && !note.wrappedContent.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        isTitleFocused = false
+                        focusTextEditor = true
+                    }
                 }
             }
         }
@@ -160,6 +187,10 @@ struct NoteEditorView: View {
                     if let imageData = image.jpegData(compressionQuality: 0.7) {
                         noteViewModel.addImage(to: note, imageData: imageData)
                     }
+                    // 图片选择后恢复编辑器焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        focusTextEditor = true
+                    }
                 }
             )
         }
@@ -169,11 +200,30 @@ struct NoteEditorView: View {
                     // 处理OCR结果
                     handleOCRResult(result)
                     showingOCRView = false
+                    
+                    // OCR处理完成后恢复编辑器焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        focusTextEditor = true
+                    }
                 },
                 onDismiss: {
                     showingOCRView = false
+                    
+                    // OCR取消后也恢复编辑器焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        focusTextEditor = true
+                    }
                 }
             )
+        }
+        // 添加特定的初始焦点设置
+        .task {
+            // 如果是新笔记（空标题），延迟设置标题焦点
+            if note.wrappedTitle.isEmpty {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒延迟
+                isTitleFocused = true
+                focusTextEditor = false
+            }
         }
     }
     
@@ -227,6 +277,9 @@ struct NoteEditorView: View {
     
     // 保存所有更改
     private func saveChanges() {
+        // 先刷新笔记确保使用最新数据
+        viewContext.refresh(note, mergeChanges: true)
+        
         // 更新笔记，使用富文本内容
         noteViewModel.updateNoteWithRichContent(
             note: note,

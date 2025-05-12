@@ -163,7 +163,9 @@ struct FolderListView: View {
                                     content: "",
                                     folder: selectedFolder
                                 )
-                                noteViewModel.selectedNote = newNote
+                                
+                                // 使用新方法选择笔记
+                                noteViewModel.setSelectedNote(newNote)
                             }) {
                                 Label("新建笔记", systemImage: "note.text.badge.plus")
                             }
@@ -275,7 +277,8 @@ struct FolderListView: View {
                         ForEach(selectedFolder.notesArray) { note in
                             Button(action: {
                                 withAnimation(.navigationPush) {
-                                    noteViewModel.selectedNote = note
+                                    // 使用新方法选择笔记
+                                    noteViewModel.setSelectedNote(note)
                                 }
                             }) {
                                 NoteRow(note: note)

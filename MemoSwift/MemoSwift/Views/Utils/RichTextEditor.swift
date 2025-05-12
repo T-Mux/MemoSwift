@@ -44,24 +44,36 @@ struct RichTextEditor: UIViewRepresentable {
     
     // 更新UITextView
     func updateUIView(_ textView: UITextView, context: Context) {
+        // 如果正在活跃编辑中，避免不必要的更新
+        if context.coordinator.isActivelyEditing {
+            return
+        }
+        
         // 避免更新时光标位置重置
         let selectedRange = textView.selectedRange
         
-        textView.attributedText = attributedText
-        
-        // 恢复光标位置
-        if selectedRange.location < attributedText.length {
-            textView.selectedRange = selectedRange
+        // 只有当内容真正变化时才进行更新，减少不必要的重绘
+        if !NSAttributedString.areEqual(textView.attributedText, attributedText) {
+            textView.attributedText = attributedText
+            
+            // 恢复光标位置
+            if selectedRange.location < attributedText.length {
+                textView.selectedRange = selectedRange
+            }
         }
         
-        // 强制保持键盘焦点，除非明确设置focus为false
-        // 这确保了只有当调用doneEditing时才会失去焦点
-        if focus && !textView.isFirstResponder {
+        // 只有当明确设置了focus为true时才获取焦点
+        if focus && !textView.isFirstResponder && !context.coordinator.isResigningFocus {
             textView.becomeFirstResponder()
-        } else if !focus && textView.isFirstResponder {
-            // 只有当focus明确设置为false时才会关闭键盘
-            // 这通常只会在doneEditing方法中发生
+            context.coordinator.preventKeyboardDismiss = true
+        } else if !focus && textView.isFirstResponder && context.coordinator.isResigningFocus {
+            // 只有明确设置了要放弃焦点，才真正放弃
             textView.resignFirstResponder()
+            
+            // 延迟重置标志
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                context.coordinator.isResigningFocus = false
+            }
         }
     }
     
@@ -161,7 +173,10 @@ struct RichTextEditor: UIViewRepresentable {
         var parent: RichTextEditor
         var textView: UITextView?
         var isFirstUpdate = true  // 跟踪首次更新状态
-        var preventKeyboardDismiss = false  // 防止工具栏按钮导致键盘关闭
+        var preventKeyboardDismiss = true  // 默认阻止工具栏消失
+        var isResigningFocus = false  // 跟踪是否主动放弃焦点
+        var isActivelyEditing = false  // 跟踪是否正在活跃编辑
+        var lastEditTimestamp = Date()  // 上次编辑时间戳
         
         // 字体大小相关视图引用
         var fontSizeContainer: UIView?
@@ -175,45 +190,84 @@ struct RichTextEditor: UIViewRepresentable {
         
         // 文本改变时更新绑定值
         func textViewDidChange(_ textView: UITextView) {
+            // 标记为活跃编辑状态
+            isActivelyEditing = true
+            lastEditTimestamp = Date()
+            
             if let attributedText = textView.attributedText {
                 parent.attributedText = attributedText
             }
             self.textView = textView
+            
+            // 1秒后重置活跃编辑状态
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                // 只有当从上次编辑已经过去了至少1秒，才重置活跃状态
+                if let self = self, Date().timeIntervalSince(self.lastEditTimestamp) >= 1.0 {
+                    self.isActivelyEditing = false
+                }
+            }
+        }
+        
+        // 开始编辑时的处理
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.focus = true
+            preventKeyboardDismiss = true
         }
         
         // 阻止编辑自动结束，除非是主动调用resignFirstResponder
         func textViewShouldEndEditing(_ textView: UITextView) -> Bool {
+            // 如果正在活跃编辑状态，坚决阻止失去焦点
+            if isActivelyEditing && Date().timeIntervalSince(lastEditTimestamp) < 1.0 {
+                DispatchQueue.main.async {
+                    textView.becomeFirstResponder()
+                }
+                return false
+            }
+            
             // 如果设置了阻止键盘消失，并且不是来自Done按钮的请求，则阻止键盘消失
-            if preventKeyboardDismiss {
+            if preventKeyboardDismiss && !isResigningFocus {
                 // 保持输入焦点
                 DispatchQueue.main.async {
                     textView.becomeFirstResponder()
                 }
-                // 但仍然返回true允许其他操作发生
-                return true
+                return false
             }
             return true
         }
         
         // 当编辑结束时（如按下Done按钮后），确保保存内容
         func textViewDidEndEditing(_ textView: UITextView) {
-            // 如果是通过Done按钮结束的编辑，那么在doneEditing方法中已经调用了onCommit
-            // 这里不需要再次调用，避免重复保存
+            // 只有当真正需要结束编辑时才更新状态
+            if isResigningFocus {
+                isActivelyEditing = false
+                // 确保提交最终的内容
+                parent.onCommit(parent.attributedText)
+            }
         }
         
         // 完成编辑 - 只有点击"Done"按钮才会执行这个方法
         @objc func doneEditing() {
+            // 标记为主动放弃焦点
+            isResigningFocus = true
+            isActivelyEditing = false
+            
             // 关闭阻止键盘消失的标志，允许键盘隐藏
             preventKeyboardDismiss = false
-            
-            // 隐藏键盘和工具栏
-            textView?.resignFirstResponder()
             
             // 确保提交更新的内容
             parent.onCommit(parent.attributedText)
             
             // 关闭焦点状态
             parent.focus = false
+            
+            // 隐藏键盘和工具栏
+            textView?.resignFirstResponder()
+            
+            // 延迟重置变量，以避免即时恢复焦点
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.isResigningFocus = false
+                self.preventKeyboardDismiss = true
+            }
         }
         
         // 切换粗体
@@ -371,6 +425,12 @@ struct RichTextEditor: UIViewRepresentable {
                 fontSizeContainer = nil
                 fontSizeSlider = nil
                 fontSizeLabel = nil
+                
+                // 确保移除后立即恢复焦点和工具栏
+                DispatchQueue.main.async {
+                    textView.becomeFirstResponder()
+                    self.preventKeyboardDismiss = true
+                }
                 return
             }
             
@@ -616,74 +676,91 @@ struct RichTextEditor: UIViewRepresentable {
         // 显示颜色选择器
         @objc func showColorPicker() {
             guard let textView = textView else { return }
+            let selectedRange = textView.selectedRange
             
-            // 创建颜色选择器
-            let colorPicker = UIColorPickerViewController()
-            colorPicker.selectedColor = textView.textColor ?? .black
-            colorPicker.delegate = self
-            
-            // 获取当前视图控制器并显示颜色选择器
-            if let viewController = getViewController() {
-                viewController.present(colorPicker, animated: true)
+            if selectedRange.length > 0 {
+                let colorPicker = UIColorPickerViewController()
+                colorPicker.delegate = self
+                
+                // 设置初始颜色为当前选择的文本颜色（如果有）
+                textView.attributedText.enumerateAttribute(.foregroundColor, in: selectedRange, options: []) { value, _, _ in
+                    if let color = value as? UIColor {
+                        colorPicker.selectedColor = color
+                    }
+                }
+                
+                // 临时允许键盘关闭，以便显示颜色选择器
+                preventKeyboardDismiss = false
+                
+                if let viewController = getViewController() {
+                    viewController.present(colorPicker, animated: true)
+                }
+            } else {
+                // 如果没有选择文本，确保textView保持焦点
+                textView.becomeFirstResponder()
+                preventKeyboardDismiss = true
             }
         }
         
         // 添加链接
         @objc func addLink() {
             guard let textView = textView else { return }
-            guard textView.selectedRange.length > 0 else {
+            let selectedRange = textView.selectedRange
+            
+            if selectedRange.length > 0 {
+                // 临时允许键盘关闭
+                preventKeyboardDismiss = false
+                
+                let alertController = UIAlertController(title: "添加链接", message: nil, preferredStyle: .alert)
+                alertController.addTextField { textField in
+                    textField.placeholder = "输入URL (https://...)"
+                    textField.keyboardType = .URL
+                    textField.autocapitalizationType = .none
+                    textField.clearButtonMode = .whileEditing
+                }
+                
+                let cancelAction = UIAlertAction(title: "取消", style: .cancel) { [weak self] _ in
+                    // 取消后确保文本视图保持焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        self?.textView?.becomeFirstResponder()
+                        self?.preventKeyboardDismiss = true
+                    }
+                }
+                
+                let addAction = UIAlertAction(title: "添加", style: .default) { [weak self] _ in
+                    guard let linkString = alertController.textFields?.first?.text, !linkString.isEmpty else {
+                        // 如果链接为空，保持焦点并返回
+                        self?.textView?.becomeFirstResponder()
+                        return
+                    }
+                    
+                    guard let textView = self?.textView else { return }
+                    let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
+                    
+                    if let url = URL(string: linkString) {
+                        mutableAttributedString.addAttribute(.link, value: url, range: selectedRange)
+                        textView.attributedText = mutableAttributedString
+                        textView.selectedRange = selectedRange
+                        
+                        // 更新绑定的文本
+                        self?.parent.attributedText = mutableAttributedString
+                    }
+                    
+                    // 添加链接后确保文本视图保持焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        textView.becomeFirstResponder()
+                    }
+                }
+                
+                alertController.addAction(cancelAction)
+                alertController.addAction(addAction)
+                
+                if let viewController = self.getViewController() {
+                    viewController.present(alertController, animated: true)
+                }
+            } else {
                 // 如果没有选中文本，保持焦点并返回
                 textView.becomeFirstResponder()
-                return
-            }
-            
-            let alertController = UIAlertController(title: "添加链接", message: nil, preferredStyle: .alert)
-            
-            alertController.addTextField { textField in
-                textField.placeholder = "https://example.com"
-                textField.keyboardType = .URL
-                textField.autocapitalizationType = .none
-                textField.autocorrectionType = .no
-            }
-            
-            let cancelAction = UIAlertAction(title: "取消", style: .cancel) { [weak self] _ in
-                // 取消后确保文本视图保持焦点
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self?.textView?.becomeFirstResponder()
-                }
-            }
-            
-            let addAction = UIAlertAction(title: "添加", style: .default) { [weak self] _ in
-                guard let linkString = alertController.textFields?.first?.text, !linkString.isEmpty else {
-                    // 如果链接为空，保持焦点并返回
-                    self?.textView?.becomeFirstResponder()
-                    return
-                }
-                
-                guard let textView = self?.textView else { return }
-                let selectedRange = textView.selectedRange
-                let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
-                
-                if let url = URL(string: linkString) {
-                    mutableAttributedString.addAttribute(.link, value: url, range: selectedRange)
-                    textView.attributedText = mutableAttributedString
-                    textView.selectedRange = selectedRange
-                    
-                    // 更新绑定的文本
-                    self?.parent.attributedText = mutableAttributedString
-                }
-                
-                // 添加链接后确保文本视图保持焦点
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    textView.becomeFirstResponder()
-                }
-            }
-            
-            alertController.addAction(cancelAction)
-            alertController.addAction(addAction)
-            
-            if let viewController = getViewController() {
-                viewController.present(alertController, animated: true)
             }
         }
         
@@ -694,26 +771,27 @@ struct RichTextEditor: UIViewRepresentable {
             // 创建并显示选项菜单
             let alertController = UIAlertController(title: "添加图片", message: "选择图片来源", preferredStyle: .actionSheet)
             
+            // 临时允许键盘关闭
+            preventKeyboardDismiss = false
+            
             // 添加选项
             let cameraAction = UIAlertAction(title: "拍照", style: .default) { [weak self] _ in
                 self?.handleImageOption(source: .camera)
-                // 在图片处理后，焦点会在NoteEditorView中通过通知系统处理，这里不需要特别处理
             }
             
             let photoLibraryAction = UIAlertAction(title: "从相册选择", style: .default) { [weak self] _ in
                 self?.handleImageOption(source: .photoLibrary)
-                // 在图片处理后，焦点会在NoteEditorView中通过通知系统处理，这里不需要特别处理
             }
             
             let ocrAction = UIAlertAction(title: "OCR文字识别", style: .default) { [weak self] _ in
                 self?.handleImageOption(source: .ocr)
-                // 在OCR处理后，焦点会在NoteEditorView中通过通知系统处理，这里不需要特别处理
             }
             
             let cancelAction = UIAlertAction(title: "取消", style: .cancel) { [weak self] _ in
                 // 取消后确保文本视图保持焦点
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self?.textView?.becomeFirstResponder()
+                    self?.preventKeyboardDismiss = true
                 }
             }
             
@@ -730,7 +808,7 @@ struct RichTextEditor: UIViewRepresentable {
             }
             
             // 显示选项菜单
-            if let viewController = getViewController() {
+            if let viewController = self.getViewController() {
                 viewController.present(alertController, animated: true)
             }
         }
@@ -744,6 +822,12 @@ struct RichTextEditor: UIViewRepresentable {
                 object: nil,
                 userInfo: userInfo
             )
+            
+            // 设置标志，稍后恢复焦点
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.preventKeyboardDismiss = true
+                self.textView?.becomeFirstResponder()
+            }
         }
         
         // 切换文本属性
@@ -860,4 +944,24 @@ enum ImageSource {
     case camera
     case photoLibrary
     case ocr
+}
+
+// 添加NSAttributedString扩展，用于比较两个NSAttributedString
+extension NSAttributedString {
+    static func areEqual(_ lhs: NSAttributedString?, _ rhs: NSAttributedString?) -> Bool {
+        // 如果两者都是nil或者是同一个对象，它们是相等的
+        if lhs === rhs { return true }
+        // 如果其中一个是nil，而另一个不是，它们不相等
+        if lhs == nil || rhs == nil { return false }
+        
+        // 如果长度不同，它们不相等
+        if lhs!.length != rhs!.length { return false }
+        
+        // 如果字符串内容不同，它们不相等
+        if lhs!.string != rhs!.string { return false }
+        
+        // 简单地比较文本内容，对于编辑器的大多数情况来说已经足够
+        // 为了性能，我们不比较详细的属性
+        return true
+    }
 } 

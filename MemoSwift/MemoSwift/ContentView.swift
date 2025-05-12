@@ -88,13 +88,17 @@ struct ContentView: View {
                 if note != nil {
                     // 当选中笔记时，确保显示详情视图
                     withAnimation(.navigationPush) {
+                        // 确保刷新CoreData上下文中的选中笔记
+                        if let selectedNote = note {
+                            viewContext.refresh(selectedNote, mergeChanges: true)
+                        }
                         columnVisibility = .detailOnly
                     }
                 }
             }
         } content: {
             // Second column: Notes in selected folder
-            ZStack {
+            Group {
                 if let selectedFolder = folderViewModel.selectedFolder {
                     NoteListView(
                         folder: selectedFolder,
@@ -109,18 +113,16 @@ struct ContentView: View {
                         }
                     )
                     .environment(\.managedObjectContext, viewContext)
-                    .navigationTransition(isPresenting: true)
-                    .zIndex(1) // 确保层级顺序正确
                 } else {
                     EmptyNoteSelectionView()
-                        .transition(.move(edge: .leading))
                 }
             }
             .animation(.navigationPush, value: folderViewModel.selectedFolder != nil)
         } detail: {
             // Third column: Note editor
-            ZStack {
+            Group {
                 if let selectedNote = noteViewModel.selectedNote {
+                    // 简化视图结构，移除所有可能引起问题的修饰符
                     NoteEditorView(
                         note: selectedNote,
                         noteViewModel: noteViewModel,
@@ -133,8 +135,9 @@ struct ContentView: View {
                             }
                         }
                     )
-                    .navigationTransition(isPresenting: true)
-                    .zIndex(1) // 确保层级顺序正确
+                } else {
+                    // 显示空视图
+                    Color.clear
                 }
             }
             .animation(.navigationPush, value: noteViewModel.selectedNote != nil)

@@ -71,7 +71,9 @@ struct NoteListView: View {
                                 content: "",
                                 folder: folder
                             )
-                            noteViewModel.selectedNote = newNote
+                            
+                            // 使用新方法选择笔记
+                            noteViewModel.setSelectedNote(newNote)
                         }) {
                             Label("新建笔记", systemImage: "square.and.pencil")
                         }
@@ -103,7 +105,8 @@ struct NoteListView: View {
             List(selection: $noteViewModel.selectedNote) {
                 ForEach(notes) { note in
                     Button(action: {
-                        noteViewModel.selectedNote = note
+                        // 使用新方法选择笔记
+                        noteViewModel.setSelectedNote(note)
                     }) {
                         NoteRow(note: note)
                             .tag(note)

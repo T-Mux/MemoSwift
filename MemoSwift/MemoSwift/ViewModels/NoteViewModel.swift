@@ -24,6 +24,23 @@ class NoteViewModel: ObservableObject {
         self.viewContext = viewContext
     }
     
+    // 设置选中笔记，确保清除旧的选择状态
+    func setSelectedNote(_ note: Note?) {
+        // 先清除选中状态，确保视图完全刷新
+        self.selectedNote = nil
+        
+        // 使用微小的延迟确保UI状态更新
+        DispatchQueue.main.async {
+            if let note = note {
+                // 刷新笔记数据确保最新状态
+                self.viewContext.refresh(note, mergeChanges: true)
+            }
+            
+            // 设置新的选中笔记
+            self.selectedNote = note
+        }
+    }
+    
     // 创建新笔记
     @discardableResult
     func createNote(title: String, content: String, folder: Folder) -> Note {
@@ -38,6 +55,10 @@ class NoteViewModel: ObservableObject {
         saveContext()
         // 通知刷新
         noteUpdated = UUID()
+        
+        // 确保在更新selected之前刷新视图上下文
+        viewContext.refresh(newNote, mergeChanges: true)
+        
         return newNote
     }
     
@@ -57,6 +78,9 @@ class NoteViewModel: ObservableObject {
     
     // 更新笔记富文本内容
     func updateNoteWithRichContent(note: Note, title: String, attributedContent: NSAttributedString) {
+        // 先刷新笔记确保使用最新数据
+        viewContext.refresh(note, mergeChanges: true)
+        
         note.title = title
         
         // 将富文本内容转换为普通文本保存
@@ -156,6 +180,10 @@ class NoteViewModel: ObservableObject {
     
     // 强制刷新 - 可以从外部调用以刷新视图
     func forceRefresh() {
+        // 确保CoreData上下文内的所有对象都是最新状态
+        if let note = selectedNote {
+            viewContext.refresh(note, mergeChanges: true)
+        }
         noteUpdated = UUID()
     }
     
