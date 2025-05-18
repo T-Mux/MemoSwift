@@ -23,6 +23,8 @@ struct NoteEditorView: View {
     @State private var showingOCRView = false
     @State private var focusTextEditor = false
     @FocusState private var isTitleFocused: Bool
+    @State private var canUndo = false
+    @State private var canRedo = false
     
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
@@ -87,6 +89,34 @@ struct NoteEditorView: View {
                     .padding(.leading)
                     
                     Spacer()
+                    
+                    // 撤销和重做按钮
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("RichTextEditorUndo"),
+                                object: nil
+                            )
+                        }) {
+                            SwiftUI.Image(systemName: "arrow.uturn.backward")
+                                .font(.body)
+                                .foregroundColor(canUndo ? .blue : .gray)
+                        }
+                        .disabled(!canUndo)
+                        
+                        Button(action: {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("RichTextEditorRedo"),
+                                object: nil
+                            )
+                        }) {
+                            SwiftUI.Image(systemName: "arrow.uturn.forward")
+                                .font(.body)
+                                .foregroundColor(canRedo ? .blue : .gray)
+                        }
+                        .disabled(!canRedo)
+                    }
+                    .padding(.trailing)
                 }
             }
             .padding(.vertical, 8)
@@ -135,10 +165,16 @@ struct NoteEditorView: View {
             }
             
             // 富文本编辑器
-            RichTextEditor(attributedText: $attributedContent, focus: $focusTextEditor, onCommit: { updatedText in
-                self.attributedContent = updatedText
-                debounceSave()
-            })
+            RichTextEditor(
+                attributedText: $attributedContent,
+                focus: $focusTextEditor,
+                canUndo: $canUndo,
+                canRedo: $canRedo,
+                onCommit: { updatedText in
+                    self.attributedContent = updatedText
+                    debounceSave()
+                }
+            )
             .padding([.horizontal, .top], 8)
             .background(Color(.systemBackground))
             .onAppear {

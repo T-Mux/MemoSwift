@@ -4,13 +4,22 @@ import UIKit
 // 富文本编辑器组件，使用UIKit的UITextView桥接到SwiftUI
 struct RichTextEditor: UIViewRepresentable {
     @Binding var attributedText: NSAttributedString
-    var onCommit: (NSAttributedString) -> Void
     @Binding var focus: Bool
+    @Binding var canUndo: Bool
+    @Binding var canRedo: Bool
+    var onCommit: (NSAttributedString) -> Void
+    var textView: UITextView?
     
     // 初始化函数，添加默认参数
-    init(attributedText: Binding<NSAttributedString>, focus: Binding<Bool> = .constant(false), onCommit: @escaping (NSAttributedString) -> Void) {
+    init(attributedText: Binding<NSAttributedString>, 
+         focus: Binding<Bool> = .constant(false),
+         canUndo: Binding<Bool> = .constant(false),
+         canRedo: Binding<Bool> = .constant(false),
+         onCommit: @escaping (NSAttributedString) -> Void) {
         self._attributedText = attributedText
         self._focus = focus
+        self._canUndo = canUndo
+        self._canRedo = canRedo
         self.onCommit = onCommit
     }
     
@@ -61,6 +70,9 @@ struct RichTextEditor: UIViewRepresentable {
                 textView.selectedRange = selectedRange
             }
         }
+        
+        // 更新撤销重做状态
+        context.coordinator.updateUndoRedoState()
         
         // 只有当明确设置了focus为true时才获取焦点
         if focus && !textView.isFirstResponder && !context.coordinator.isResigningFocus {
@@ -186,25 +198,85 @@ struct RichTextEditor: UIViewRepresentable {
         
         init(_ parent: RichTextEditor) {
             self.parent = parent
+            super.init()
+            
+            // 添加撤销和重做通知监听
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleUndo),
+                name: NSNotification.Name("RichTextEditorUndo"),
+                object: nil
+            )
+            
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleRedo),
+                name: NSNotification.Name("RichTextEditorRedo"),
+                object: nil
+            )
+            
+            // 添加文本变化通知监听
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(textDidChange),
+                name: UITextView.textDidChangeNotification,
+                object: nil
+            )
+        }
+        
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+        
+        @objc func textDidChange(_ notification: Notification) {
+            if let textView = notification.object as? UITextView,
+               textView === self.textView {
+                updateUndoRedoState()
+            }
+        }
+        
+        @objc func handleUndo() {
+            if let textView = textView {
+                if textView.undoManager?.canUndo == true {
+                    textView.undoManager?.undo()
+                    updateUndoRedoState()
+                }
+            }
+        }
+        
+        @objc func handleRedo() {
+            if let textView = textView {
+                if textView.undoManager?.canRedo == true {
+                    textView.undoManager?.redo()
+                    updateUndoRedoState()
+                }
+            }
+        }
+        
+        func updateUndoRedoState() {
+            if let textView = textView {
+                DispatchQueue.main.async {
+                    self.parent.canUndo = textView.undoManager?.canUndo ?? false
+                    self.parent.canRedo = textView.undoManager?.canRedo ?? false
+                }
+            }
         }
         
         // 文本改变时更新绑定值
         func textViewDidChange(_ textView: UITextView) {
-            // 标记为活跃编辑状态
             isActivelyEditing = true
             lastEditTimestamp = Date()
             
-            if let attributedText = textView.attributedText {
-                parent.attributedText = attributedText
-            }
-            self.textView = textView
+            // 更新文本内容
+            parent.attributedText = textView.attributedText
+            parent.onCommit(textView.attributedText)
             
-            // 1秒后重置活跃编辑状态
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                // 只有当从上次编辑已经过去了至少1秒，才重置活跃状态
-                if let self = self, Date().timeIntervalSince(self.lastEditTimestamp) >= 1.0 {
-                    self.isActivelyEditing = false
-                }
+            // 更新撤销重做状态
+            updateUndoRedoState()
+            
+            // 延迟重置编辑状态
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.isActivelyEditing = false
             }
         }
         
@@ -212,27 +284,7 @@ struct RichTextEditor: UIViewRepresentable {
         func textViewDidBeginEditing(_ textView: UITextView) {
             parent.focus = true
             preventKeyboardDismiss = true
-        }
-        
-        // 阻止编辑自动结束，除非是主动调用resignFirstResponder
-        func textViewShouldEndEditing(_ textView: UITextView) -> Bool {
-            // 如果正在活跃编辑状态，坚决阻止失去焦点
-            if isActivelyEditing && Date().timeIntervalSince(lastEditTimestamp) < 1.0 {
-                DispatchQueue.main.async {
-                    textView.becomeFirstResponder()
-                }
-                return false
-            }
-            
-            // 如果设置了阻止键盘消失，并且不是来自Done按钮的请求，则阻止键盘消失
-            if preventKeyboardDismiss && !isResigningFocus {
-                // 保持输入焦点
-                DispatchQueue.main.async {
-                    textView.becomeFirstResponder()
-                }
-                return false
-            }
-            return true
+            updateUndoRedoState()
         }
         
         // 当编辑结束时（如按下Done按钮后），确保保存内容
@@ -243,6 +295,7 @@ struct RichTextEditor: UIViewRepresentable {
                 // 确保提交最终的内容
                 parent.onCommit(parent.attributedText)
             }
+            updateUndoRedoState()
         }
         
         // 完成编辑 - 只有点击"Done"按钮才会执行这个方法
