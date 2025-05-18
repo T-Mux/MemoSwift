@@ -28,6 +28,7 @@ class SearchViewModel: ObservableObject {
     enum SearchMode: String, CaseIterable, Identifiable {
         case quick = "快速搜索"
         case fullText = "全文搜索"
+        case tag = "标签搜索"
         
         var id: String { self.rawValue }
         
@@ -37,6 +38,8 @@ class SearchViewModel: ObservableObject {
                 return "在笔记标题中搜索"
             case .fullText:
                 return "在笔记标题和内容中搜索"
+            case .tag:
+                return "搜索包含特定标签的笔记"
             }
         }
         
@@ -46,6 +49,8 @@ class SearchViewModel: ObservableObject {
                 return "magnifyingglass"
             case .fullText:
                 return "doc.text.magnifyingglass"
+            case .tag:
+                return "tag"
             }
         }
     }
@@ -102,6 +107,18 @@ class SearchViewModel: ObservableObject {
         isSearching = true
         lastSearchTime = Date()
         
+        switch searchMode {
+        case .quick, .fullText:
+            searchByTextContent()
+        case .tag:
+            searchByTag()
+        }
+        
+        isSearching = false
+    }
+    
+    // 按文本内容搜索（标题或全文）
+    private func searchByTextContent() {
         let fetchRequest: NSFetchRequest<Note> = Note.fetchRequest()
         
         // 根据搜索模式设置谓词
@@ -118,6 +135,8 @@ class SearchViewModel: ObservableObject {
                 format: "title CONTAINS[cd] %@ OR content CONTAINS[cd] %@", 
                 searchQuery, searchQuery
             )
+        default:
+            break
         }
         
         // 按更新时间降序排列
@@ -142,8 +161,51 @@ class SearchViewModel: ObservableObject {
             searchResults = []
             hasMoreResults = false
         }
+    }
+    
+    // 按标签搜索
+    private func searchByTag() {
+        // 首先查找匹配的标签
+        let tagFetchRequest: NSFetchRequest<Tag> = Tag.fetchRequest()
+        tagFetchRequest.predicate = NSPredicate(format: "name CONTAINS[cd] %@", searchQuery)
         
-        isSearching = false
+        do {
+            let matchingTags = try viewContext.fetch(tagFetchRequest)
+            
+            if matchingTags.isEmpty {
+                // 如果没有匹配的标签，则清空结果
+                searchResults = []
+                hasMoreResults = false
+                return
+            }
+            
+            // 收集所有匹配标签关联的笔记
+            var allTaggedNotes: [Note] = []
+            for tag in matchingTags {
+                allTaggedNotes.append(contentsOf: tag.notesArray)
+            }
+            
+            // 去重
+            let uniqueNotes = Array(Set(allTaggedNotes))
+            
+            // 按更新时间排序
+            let sortedNotes = uniqueNotes.sorted {
+                ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast)
+            }
+            
+            // 管理结果集大小
+            if sortedNotes.count > maxResults {
+                searchResults = Array(sortedNotes[0..<maxResults])
+                hasMoreResults = true
+            } else {
+                searchResults = sortedNotes
+                hasMoreResults = false
+            }
+        } catch {
+            print("搜索标签时出错: \(error)")
+            searchResults = []
+            hasMoreResults = false
+        }
     }
     
     // 重置搜索

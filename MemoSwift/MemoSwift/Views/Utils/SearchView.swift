@@ -111,6 +111,14 @@ struct SearchView: View {
                             Label("全文搜索", systemImage: "doc.text.magnifyingglass")
                                 .foregroundColor(searchViewModel.searchMode == .fullText ? .blue : .primary)
                         }
+                        
+                        Button(action: {
+                            searchViewModel.searchMode = .tag
+                            searchViewModel.performSearch()
+                        }) {
+                            Label("标签搜索", systemImage: "tag")
+                                .foregroundColor(searchViewModel.searchMode == .tag ? .blue : .primary)
+                        }
                     } label: {
                         HStack {
                             Text(searchViewModel.searchMode.rawValue)
