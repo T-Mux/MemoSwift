@@ -25,10 +25,14 @@ struct NoteEditorView: View {
     @FocusState private var isTitleFocused: Bool
     @State private var canUndo = false
     @State private var canRedo = false
+    @State private var showingTagManager = false
+    @State private var newTagName = ""
+    @State private var availableTags: [Tag] = []
+    @State private var selectedTags: [Tag] = []
+    @State private var debounceTimer: Timer?
     
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
-    @State private var debounceTimer: Timer?
     
     init(note: Note, noteViewModel: NoteViewModel, onBack: @escaping () -> Void) {
         self.note = note
@@ -46,109 +50,147 @@ struct NoteEditorView: View {
         // 明确使用刚刚获取的初始值创建State对象
         _title = State(initialValue: initialTitle)
         _attributedContent = State(initialValue: initialContent)
+        
+        // 初始化标签
+        let fetchedTags = noteViewModel.fetchTagsForNote(note: note)
+        _selectedTags = State(initialValue: fetchedTags)
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部导航栏 - 与文件夹界面保持一致的设计，确保标题居中
-            ZStack {
-                // 居中标题
-                Text(title.isEmpty ? "新笔记" : title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                
-                HStack {
-                    // 左侧：返回按钮
-                    Button(action: {
-                        // 返回前确保立即保存当前更改
-                        debounceTimer?.invalidate()
-                        saveChanges()
-                        
-                        // 确保数据更新前强制刷新
-                        viewContext.refreshAllObjects()
-                        noteViewModel.forceRefresh()
-                        
-                        // 返回上一级（使用导航控制器风格的动画）
-                        withAnimation(.navigationPop) {
-                            onBack()
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            SwiftUI.Image(systemName: "chevron.left")
-                                .font(.body)
-                            Text("返回")
-                                .font(.body)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                        .foregroundColor(.blue)
-                    }
-                    .padding(.leading)
-                    
-                    Spacer()
-                    
-                    // 撤销和重做按钮
-                    HStack(spacing: 16) {
-                        Button(action: {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("RichTextEditorUndo"),
-                                object: nil
-                            )
-                        }) {
-                            SwiftUI.Image(systemName: "arrow.uturn.backward")
-                                .font(.body)
-                                .foregroundColor(canUndo ? .blue : .gray)
-                        }
-                        .disabled(!canUndo)
-                        
-                        Button(action: {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("RichTextEditorRedo"),
-                                object: nil
-                            )
-                        }) {
-                            SwiftUI.Image(systemName: "arrow.uturn.forward")
-                                .font(.body)
-                                .foregroundColor(canRedo ? .blue : .gray)
-                        }
-                        .disabled(!canRedo)
-                    }
-                    .padding(.trailing)
+            topBar
+            Divider()
+            titleField
+            Divider()
+            imagesSection
+            tagManagementSection
+            richTextEditorSection
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .onDisappear {
+            debounceTimer?.invalidate()
+            saveChanges()
+            NotificationCenter.default.removeObserver(self)
+            noteViewModel.forceRefresh()
+        }
+        .transition(.move(edge: .trailing))
+        .onAppear {
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("RichTextEditorImageRequest"),
+                object: nil,
+                queue: .main
+            ) { [self] notification in
+                if let userInfo = notification.userInfo,
+                   let source = userInfo["source"] as? ImageSource {
+                    handleImageRequest(source: source)
                 }
             }
-            .padding(.vertical, 8)
-            .background(Color(.systemBackground))
-            
-            Divider()
-            
-            // 标题输入框 - 修改为更简单的实现，避免可能的冲突
-            TextField("标题", text: $title)
-                .font(.title3)
-                .padding()
-                .background(Color(.systemBackground))
-                .focused($isTitleFocused)
-                .onTapGesture {
-                    // 确保点击时获得焦点
-                    isTitleFocused = true
+            loadNoteTags()
+        }
+        .sheet(isPresented: $showingTagManager) {
+            tagManagerSheet
+        }
+        .onChange(of: showingTagManager) { _, newValue in
+            if !newValue {
+                // 关闭标签管理器时，确保不自动弹出富文本编辑器
+                focusTextEditor = false
+                // 设置一个更长时间的防护，确保标签管理关闭后富文本编辑器不会自动获取焦点
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     focusTextEditor = false
                 }
-                .onChange(of: title) { _, _ in
-                    // 只需调用保存，不再重新赋值
-                    debounceSave()
+            } else {
+                // 打开标签管理器时，同样确保富文本编辑器失去焦点
+                focusTextEditor = false
+            }
+        }
+    }
+    
+    // 顶部导航栏部分
+    private var topBar: some View {
+        ZStack {
+            Text(title.isEmpty ? "新笔记" : title)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .center)
+            HStack {
+                Button(action: {
+                    debounceTimer?.invalidate()
+                    saveChanges()
+                    viewContext.refreshAllObjects()
+                    noteViewModel.forceRefresh()
+                    withAnimation(.navigationPop) {
+                        onBack()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        SwiftUI.Image(systemName: "chevron.left")
+                            .font(.body)
+                        Text("返回")
+                            .font(.body)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .foregroundColor(.blue)
                 }
-                .submitLabel(.done)
-                .onSubmit {
-                    // 按下回车/完成时转移焦点到内容
-                    isTitleFocused = false
-                    focusTextEditor = true
+                .padding(.leading)
+                Spacer()
+                HStack(spacing: 16) {
+                    Button(action: {
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("RichTextEditorUndo"),
+                            object: nil
+                        )
+                    }) {
+                        SwiftUI.Image(systemName: "arrow.uturn.backward")
+                            .font(.body)
+                            .foregroundColor(canUndo ? .blue : .gray)
+                    }
+                    .disabled(!canUndo)
+                    Button(action: {
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("RichTextEditorRedo"),
+                            object: nil
+                        )
+                    }) {
+                        SwiftUI.Image(systemName: "arrow.uturn.forward")
+                            .font(.body)
+                            .foregroundColor(canRedo ? .blue : .gray)
+                    }
+                    .disabled(!canRedo)
                 }
-            
-            Divider()
-            
-            // 显示已添加的图片
+                .padding(.trailing)
+            }
+        }
+        .padding(.vertical, 8)
+        .background(Color(.systemBackground))
+    }
+    
+    // 标题输入框部分
+    private var titleField: some View {
+        TextField("标题", text: $title)
+            .font(.title3)
+            .padding()
+            .background(Color(.systemBackground))
+            .focused($isTitleFocused)
+            .onTapGesture {
+                isTitleFocused = true
+                focusTextEditor = false
+            }
+            .onChange(of: title) { _, _ in
+                debounceSave()
+            }
+            .submitLabel(.done)
+            .onSubmit {
+                isTitleFocused = false
+                focusTextEditor = true
+            }
+    }
+    
+    // 图片显示部分
+    private var imagesSection: some View {
+        Group {
             if !note.imagesArray.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 12) {
@@ -163,104 +205,29 @@ struct NoteEditorView: View {
                 .padding(.vertical, 8)
                 Divider()
             }
-            
-            // 富文本编辑器
-            RichTextEditor(
-                attributedText: $attributedContent,
-                focus: $focusTextEditor,
-                canUndo: $canUndo,
-                canRedo: $canRedo,
-                onCommit: { updatedText in
-                    self.attributedContent = updatedText
-                    debounceSave()
-                }
-            )
-            .padding([.horizontal, .top], 8)
-            .background(Color(.systemBackground))
-            .onAppear {
-                // 只有在有内容且已有标题的笔记中才立即聚焦编辑器
-                // 对于新笔记，我们依赖task设置焦点
-                if !note.wrappedTitle.isEmpty && !note.wrappedContent.isEmpty {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        isTitleFocused = false
-                        focusTextEditor = true
+        }
+    }
+    
+    // 标签管理区域部分
+    private var tagManagementSection: some View {
+        HStack {
+            Text("标签")
+                .font(.headline)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach(selectedTags, id: \.id) { tag in
+                        tagChip(for: tag)
                     }
                 }
             }
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .onDisappear {
-            // 视图消失时，停止所有计时器并立即保存
-            debounceTimer?.invalidate()
-            saveChanges()
-            
-            // 移除通知观察者
-            NotificationCenter.default.removeObserver(self)
-            
-            // 强制刷新确保所有更改可见
-            noteViewModel.forceRefresh()
-        }
-        .transition(.move(edge: .trailing))
-        // 监听富文本编辑器的图片请求通知
-        .onAppear {
-            // 添加通知观察者
-            NotificationCenter.default.addObserver(
-                forName: NSNotification.Name("RichTextEditorImageRequest"),
-                object: nil,
-                queue: .main
-            ) { [self] notification in
-                if let userInfo = notification.userInfo,
-                   let source = userInfo["source"] as? ImageSource {
-                    handleImageRequest(source: source)
-                }
+            Button(action: {
+                showingTagManager = true
+                loadNoteTags()
+            }) {
+                SwiftUI.Image(systemName: "plus.circle")
             }
         }
-        .sheet(isPresented: $showingImagePicker) {
-            PhotoPicker(
-                selectedImage: $selectedImage,
-                sourceType: imageSource == .camera ? .camera : .photoLibrary,
-                onImagePicked: { image in
-                    if let imageData = image.jpegData(compressionQuality: 0.7) {
-                        noteViewModel.addImage(to: note, imageData: imageData)
-                    }
-                    // 图片选择后恢复编辑器焦点
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        focusTextEditor = true
-                    }
-                }
-            )
-        }
-        .sheet(isPresented: $showingOCRView) {
-            OCRProcessView(
-                onProcessed: { result in
-                    // 处理OCR结果
-                    handleOCRResult(result)
-                    showingOCRView = false
-                    
-                    // OCR处理完成后恢复编辑器焦点
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        focusTextEditor = true
-                    }
-                },
-                onDismiss: {
-                    showingOCRView = false
-                    
-                    // OCR取消后也恢复编辑器焦点
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        focusTextEditor = true
-                    }
-                }
-            )
-        }
-        // 添加特定的初始焦点设置
-        .task {
-            // 如果是新笔记（空标题），延迟设置标题焦点
-            if note.wrappedTitle.isEmpty {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒延迟
-                isTitleFocused = true
-                focusTextEditor = false
-            }
-        }
+        .padding()
     }
     
     // 处理富文本编辑器的图片请求
@@ -322,5 +289,294 @@ struct NoteEditorView: View {
             title: title,
             attributedContent: attributedContent
         )
+        
+        // 保存完毕后不自动聚焦富文本编辑器
+        focusTextEditor = false
+    }
+    
+    // 加载笔记的标签
+    private func loadNoteTags() {
+        selectedTags = noteViewModel.fetchTagsForNote(note: note)
+        availableTags = noteViewModel.fetchAllTags().filter { tag in
+            !selectedTags.contains(where: { $0.id == tag.id })
+        }
+    }
+    
+    // 单独提取标签chip为函数，简化主视图体，帮助编译器类型检查
+    private func tagChip(for tag: Tag) -> some View {
+        HStack {
+            Text(tag.wrappedName)
+                .font(.caption)
+            Button(action: {
+                noteViewModel.removeTagFromNote(note: note, tag: tag)
+                loadNoteTags()
+            }) {
+                SwiftUI.Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(Color.red)
+            }
+        }
+        .padding(4)
+        .background(Color.gray.opacity(0.2))
+        .cornerRadius(8)
+    }
+
+    // 富文本编辑器部分提取为独立属性，简化主视图体，帮助编译器类型检查
+    private var richTextEditorSection: some View {
+        // 首先创建一个不会自动获取焦点的编辑器
+        let editor = RichTextEditor(
+            attributedText: $attributedContent,
+            focus: $focusTextEditor,
+            canUndo: $canUndo,
+            canRedo: $canRedo,
+            onCommit: { updatedText in
+                self.attributedContent = updatedText
+                debounceSave()
+            }
+        )
+        .padding([.horizontal, .top], 8)
+        .background(Color(.systemBackground))
+        
+        // 仅在完全非标签操作上下文中，才考虑自动聚焦
+        return editor.onAppear {
+            // 首次加载时如果有内容，且不是在标签操作后，才自动聚焦
+            if !note.wrappedTitle.isEmpty && 
+               !note.wrappedContent.isEmpty && 
+               !showingTagManager &&
+               !UserDefaults.standard.bool(forKey: "recentTagOperation") {
+                
+                // 设置一个较长的延迟，确保只有在确实需要的情况下才聚焦
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    // 再次检查标记，以防在延迟期间进行了标签操作
+                    if !UserDefaults.standard.bool(forKey: "recentTagOperation") {
+                        isTitleFocused = false
+                        focusTextEditor = true
+                    }
+                }
+            } else {
+                // 重置标记，但不聚焦富文本编辑器
+                UserDefaults.standard.removeObject(forKey: "recentTagOperation")
+            }
+        }
+    }
+
+    private var tagManagerSheet: some View {
+        TagListContainer(
+            availableTags: availableTags,
+            selectedTags: selectedTags,
+            newTagName: $newTagName,
+            onAddTag: { tagName in
+                _ = noteViewModel.addTagToNote(note: note, tagName: tagName)
+                loadNoteTags()
+                // 防止富文本功能栏自动弹出
+                withAnimation(.none) {
+                    focusTextEditor = false
+                }
+            },
+            onRemoveTag: { tag in
+                noteViewModel.removeTagFromNote(note: note, tag: tag)
+                loadNoteTags()
+                // 防止富文本功能栏自动弹出
+                withAnimation(.none) {
+                    focusTextEditor = false
+                }
+            },
+            onClose: {
+                showingTagManager = false
+                // 关闭标签管理器后，显式设置为不聚焦
+                DispatchQueue.main.async {
+                    focusTextEditor = false
+                    isTitleFocused = false
+                }
+            }
+        )
+    }
+}
+
+// TagListContainer to separate tag list from binding issues
+struct TagListContainer: View {
+    var availableTags: [Tag]
+    var selectedTags: [Tag]
+    @Binding var newTagName: String
+    let onAddTag: (String) -> Void
+    let onRemoveTag: (Tag) -> Void
+    let onClose: () -> Void
+    
+    // 防止自动弹出键盘的状态
+    @State private var shouldFocusTextField = false
+    @FocusState private var isTextFieldFocused: Bool
+    
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("标签管理")
+                    .font(.headline)
+                    .padding(.top)
+                
+                // 当前笔记的标签
+                if !selectedTags.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("当前标签")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(selectedTags, id: \.id) { tag in
+                                    selectedTagButton(for: tag)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 150)
+                    }
+                    .padding(.bottom, 8)
+                }
+                
+                // 可用标签列表
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("可添加标签")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    if availableTags.isEmpty {
+                        Text("暂无可添加的标签")
+                            .foregroundColor(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        // 简化视图结构，拆分复杂表达式
+                        tagListSection
+                    }
+                }
+                
+                // 新建标签区域
+                addTagSection
+                
+                Spacer()
+            }
+            .padding()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") {
+                        // 设置一个标记表示最近进行了标签操作
+                        UserDefaults.standard.set(true, forKey: "recentTagOperation")
+                        isTextFieldFocused = false
+                        // 先关闭键盘
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        // 延迟关闭以确保键盘先收起
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            onClose()
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                // 确保不会自动弹出键盘
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    shouldFocusTextField = true
+                    isTextFieldFocused = false
+                }
+            }
+            .onDisappear {
+                // 视图消失时标记操作完成
+                UserDefaults.standard.set(true, forKey: "recentTagOperation")
+            }
+        }
+    }
+    
+    // 拆分出标签列表部分
+    private var tagListSection: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading) {
+                ForEach(availableTags, id: \.id) { tag in
+                    tagButton(for: tag)
+                }
+            }
+        }
+        .frame(maxHeight: 150)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(8)
+    }
+    
+    // 进一步拆分单个标签按钮
+    private func tagButton(for tag: Tag) -> some View {
+        Button(action: {
+            onAddTag(tag.wrappedName)
+        }) {
+            HStack {
+                Text(tag.wrappedName)
+                    .foregroundColor(.primary)
+                Spacer()
+                SwiftUI.Image(systemName: "plus.circle")
+                    .foregroundColor(.green)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Color(.systemBackground))
+            .contentShape(Rectangle())
+        }
+    }
+    
+    // 当前已选标签按钮
+    private func selectedTagButton(for tag: Tag) -> some View {
+        HStack {
+            Text(tag.wrappedName)
+                .foregroundColor(.primary)
+            Spacer()
+            Button(action: {
+                onRemoveTag(tag)
+            }) {
+                SwiftUI.Image(systemName: "xmark.circle")
+                    .foregroundColor(.red)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.systemBackground))
+        .cornerRadius(8)
+    }
+    
+    // 拆分添加标签部分
+    private var addTagSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("新建标签")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                
+            HStack {
+                TextField("输入标签名称", text: $newTagName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .focused($isTextFieldFocused)
+                    .onChange(of: shouldFocusTextField) { _, newValue in
+                        if newValue {
+                            // 显式设置为不聚焦，防止键盘自动弹出
+                            isTextFieldFocused = false
+                        }
+                    }
+                
+                Button(action: {
+                    addNewTag()
+                }) {
+                    SwiftUI.Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.blue)
+                        .font(.title2)
+                }
+                .disabled(newTagName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    
+    // 拆分添加标签的动作
+    private func addNewTag() {
+        let trimmed = newTagName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        
+        // 设置一个标记表示最近进行了标签操作
+        UserDefaults.standard.set(true, forKey: "recentTagOperation")
+        // 先关闭键盘
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
+        onAddTag(trimmed)
+        newTagName = ""
     }
 } 

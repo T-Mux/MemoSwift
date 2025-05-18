@@ -198,4 +198,96 @@ class NoteViewModel: ObservableObject {
             print("保存上下文时出错: \(nsError), \(nsError.userInfo)")
         }
     }
+    
+    // 创建新标签
+    @discardableResult
+    func createTag(name: String) -> Tag {
+        let newTag = Tag(context: viewContext)
+        newTag.id = UUID()
+        newTag.name = name
+        newTag.createdAt = Date()
+        
+        saveContext()
+        return newTag
+    }
+    
+    // 为笔记添加标签
+    func addTagToNote(note: Note, tagName: String) -> Tag {
+        // 先检查是否已存在同名标签
+        let fetchRequest: NSFetchRequest<Tag> = Tag.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "name == %@", tagName)
+        var tag: Tag
+        do {
+            let existingTags = try viewContext.fetch(fetchRequest)
+            if let existingTag = existingTags.first {
+                tag = existingTag
+            } else {
+                // 如果不存在，创建新标签
+                tag = createTag(name: tagName)
+            }
+            // 避免重复添加
+            if !note.hasTag(tag) {
+                note.addTag(tag)
+                note.updatedAt = Date()
+                saveContext()
+                viewContext.refresh(note, mergeChanges: true) // 强制刷新
+                noteUpdated = UUID()
+                print("添加标签 \(tagName) 到笔记 \(note.title)")
+            }
+            return tag
+        } catch {
+            print("查找或创建标签时出错: \(error)")
+            // 如果出错，直接创建新标签
+            let newTag = createTag(name: tagName)
+            note.addTag(newTag)
+            note.updatedAt = Date()
+            saveContext()
+            viewContext.refresh(note, mergeChanges: true) // 强制刷新
+            noteUpdated = UUID()
+            print("添加标签 \(tagName) 到笔记 \(note.title)")
+            return newTag
+        }
+    }
+    
+    // 从笔记中移除标签
+    func removeTagFromNote(note: Note, tag: Tag) {
+        note.removeTag(tag)
+        note.updatedAt = Date()
+        saveContext()
+        noteUpdated = UUID()
+    }
+    
+    // 获取所有标签
+    func fetchAllTags() -> [Tag] {
+        let fetchRequest: NSFetchRequest<Tag> = Tag.fetchRequest()
+        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Tag.name, ascending: true)]
+        
+        do {
+            return try viewContext.fetch(fetchRequest)
+        } catch {
+            print("获取所有标签时出错: \(error)")
+            return []
+        }
+    }
+    
+    // 获取特定笔记的所有标签
+    func fetchTagsForNote(note: Note) -> [Tag] {
+        let fetchRequest: NSFetchRequest<Tag> = Tag.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "ANY notes == %@", note)
+        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Tag.name, ascending: true)]
+        
+        do {
+            return try viewContext.fetch(fetchRequest)
+        } catch {
+            print("获取笔记标签时出错: \(error)")
+            return []
+        }
+    }
+    
+    // 删除标签
+    func deleteTag(_ tag: Tag) {
+        viewContext.delete(tag)
+        saveContext()
+        noteUpdated = UUID()
+    }
 } 

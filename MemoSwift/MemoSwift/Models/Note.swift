@@ -19,6 +19,7 @@ public class Note: NSManagedObject, Identifiable {
     @NSManaged public var updatedAt: Date?
     @NSManaged public var folder: Folder?
     @NSManaged public var images: NSSet?
+    @NSManaged public var tags: NSSet?
     
     // 获取标题（防止空值）
     public var wrappedTitle: String {
@@ -48,6 +49,14 @@ public class Note: NSManagedObject, Identifiable {
         }
     }
     
+    // 获取标签数组
+    public var tagsArray: [Tag] {
+        let set = tags ?? []
+        return set.compactMap { $0 as? Tag }.sorted {
+            $0.wrappedName < $1.wrappedName
+        }
+    }
+    
     // 格式化日期显示
     public var formattedDate: String {
         let formatter = DateFormatter()
@@ -71,10 +80,37 @@ extension Note {
         return request
     }
     
+    // 获取特定文件夹和标签下的笔记，按更新时间降序排列
+    static func fetchRequestForFolderAndTag(folder: Folder, tag: Tag) -> NSFetchRequest<Note> {
+        let request: NSFetchRequest<Note> = Note.fetchRequest()
+        request.predicate = NSPredicate(format: "folder == %@ AND ANY tags == %@", folder, tag)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
+        return request
+    }
+    
     // 添加图片到笔记
     func addImage(_ image: Image) {
         let images = self.images?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
         images.add(image)
         self.images = images
+    }
+    
+    // 添加标签到笔记
+    func addTag(_ tag: Tag) {
+        let tags = self.tags?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
+        tags.add(tag)
+        self.tags = tags
+    }
+    
+    // 移除特定标签
+    func removeTag(_ tag: Tag) {
+        let tags = self.tags?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
+        tags.remove(tag)
+        self.tags = tags
+    }
+    
+    // 检查是否有特定标签
+    func hasTag(_ tag: Tag) -> Bool {
+        return tagsArray.contains(where: { $0.id == tag.id })
     }
 } 

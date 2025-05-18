@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4982716E2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = 4982716B2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodeld */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		490BAA042DC44CB800F3C884 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		490BA9ED2DC44CB600F3C884 /* MemoSwift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MemoSwift.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		490BAA032DC44CB800F3C884 /* MemoSwiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MemoSwiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		490BAA0D2DC44CB800F3C884 /* MemoSwiftUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MemoSwiftUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4982716D2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = MemoSwift.xcdatamodel; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +80,7 @@
 		490BA9E42DC44CB600F3C884 = {
 			isa = PBXGroup;
 			children = (
+				4982716C2DD9EBF2004EB5F6 /* CoreDataModel */,
 				490BA9EF2DC44CB600F3C884 /* MemoSwift */,
 				490BAA062DC44CB800F3C884 /* MemoSwiftTests */,
 				490BAA102DC44CB800F3C884 /* MemoSwiftUITests */,
@@ -90,6 +96,14 @@
 				490BAA0D2DC44CB800F3C884 /* MemoSwiftUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		4982716C2DD9EBF2004EB5F6 /* CoreDataModel */ = {
+			isa = PBXGroup;
+			children = (
+				4982716B2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodeld */,
+			);
+			path = CoreDataModel;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -236,6 +250,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4982716E2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodeld in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -597,6 +612,19 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCVersionGroup section */
+		4982716B2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodeld */ = {
+			isa = XCVersionGroup;
+			children = (
+				4982716D2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodel */,
+			);
+			currentVersion = 4982716D2DD9EBF2004EB5F6 /* MemoSwift.xcdatamodel */;
+			path = MemoSwift.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+/* End XCVersionGroup section */
 	};
 	rootObject = 490BA9E52DC44CB600F3C884 /* Project object */;
 }
