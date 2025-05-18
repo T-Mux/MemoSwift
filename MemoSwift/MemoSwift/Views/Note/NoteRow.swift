@@ -23,7 +23,8 @@ struct NoteRow: View {
         VStack(alignment: .leading, spacing: 4) {
             // 标题显示
             Text(note.wrappedTitle.isEmpty ? "无标题" : note.wrappedTitle)
-                .font(.headline)
+                .font(.title3)
+                .fontWeight(.bold)
                 .lineLimit(1)
             
             HStack(alignment: .top, spacing: 8) {

@@ -170,7 +170,8 @@ struct NoteEditorView: View {
     // 标题输入框部分
     private var titleField: some View {
         TextField("标题", text: $title)
-            .font(.title3)
+            .font(.title2)
+            .fontWeight(.bold)
             .padding()
             .background(Color(.systemBackground))
             .focused($isTitleFocused)

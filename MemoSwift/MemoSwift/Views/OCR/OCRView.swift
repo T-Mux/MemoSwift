@@ -94,7 +94,8 @@ struct OCRView: View {
                         
                         // 笔记标题输入框
                         TextField("笔记标题", text: $noteTitle)
-                            .font(.headline)
+                            .font(.title3)
+                            .fontWeight(.bold)
                             .padding()
                             .background(Color(.systemGray6))
                             .cornerRadius(8)

@@ -122,7 +122,8 @@ struct SearchResultRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // 标题
                     Text(highlightedTitle)
-                        .font(.headline)
+                        .font(.title3)
+                        .fontWeight(.bold)
                         .lineLimit(1)
                     
                     // 文件夹位置
