@@ -61,12 +61,59 @@ class FolderViewModel: ObservableObject {
         folderUpdated = UUID()
     }
     
-    // 删除文件夹及其所有内容（包括子文件夹和笔记）
+    // 删除文件夹及其所有内容（将其移动到回收站）
     func deleteFolder(folder: Folder) {
+        // 标记文件夹为已删除
+        folder.isInTrash = true
+        
+        // 递归标记所有子文件夹为已删除
+        if let childFolders = folder.childFolders as? Set<Folder> {
+            for childFolder in childFolders {
+                if !childFolder.isInTrash {
+                    deleteFolder(folder: childFolder)
+                }
+            }
+        }
+        
+        // 标记文件夹中的所有笔记为已删除
+        if let notes = folder.notes as? Set<Note> {
+            for note in notes {
+                if !note.isInTrash {
+                    note.isInTrash = true
+                    note.updatedAt = Date()
+                }
+            }
+        }
+        
+        saveContext()
+        
+        // 如果删除的是当前选中的文件夹，则清除选择
+        if selectedFolder == folder {
+            selectedFolder = nil
+        }
+        
+        folderUpdated = UUID()
+    }
+    
+    // 恢复已删除的文件夹
+    func restoreFolder(folder: Folder) {
+        folder.isInTrash = false
+        
+        // 如果有父文件夹且父文件夹已删除，则将父文件夹也恢复
+        if let parentFolder = folder.parentFolder, parentFolder.isInTrash {
+            restoreFolder(folder: parentFolder)
+        }
+        
+        saveContext()
+        folderUpdated = UUID()
+    }
+    
+    // 永久删除文件夹及其所有内容
+    func permanentlyDeleteFolder(folder: Folder) {
         // 递归删除所有子文件夹
         if let childFolders = folder.childFolders as? Set<Folder> {
             for childFolder in childFolders {
-                deleteFolder(folder: childFolder)
+                permanentlyDeleteFolder(folder: childFolder)
             }
         }
         
@@ -79,6 +126,27 @@ class FolderViewModel: ObservableObject {
             selectedFolder = nil
         }
         
+        folderUpdated = UUID()
+    }
+    
+    // 获取所有已删除的文件夹
+    func fetchDeletedFolders() -> [Folder] {
+        let fetchRequest = Folder.deletedFoldersFetchRequest()
+        do {
+            return try viewContext.fetch(fetchRequest)
+        } catch {
+            print("获取已删除文件夹时出错: \(error)")
+            return []
+        }
+    }
+    
+    // 清空回收站（永久删除所有已删除的文件夹）
+    func emptyTrash() {
+        let deletedFolders = fetchDeletedFolders()
+        for folder in deletedFolders {
+            viewContext.delete(folder)
+        }
+        saveContext()
         folderUpdated = UUID()
     }
     

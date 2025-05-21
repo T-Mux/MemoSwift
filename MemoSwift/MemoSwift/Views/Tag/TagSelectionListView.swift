@@ -56,7 +56,7 @@ struct TagSelectionListView: View {
             Button("添加") {
                 if !newTagName.isEmpty {
                     // 创建新标签
-                    let newTag = noteViewModel.createTag(name: newTagName)
+                    _ = noteViewModel.createTag(name: newTagName)
                     newTagName = ""
                     
                     // 更新标签列表

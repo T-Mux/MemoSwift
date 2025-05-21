@@ -17,6 +17,7 @@ public class Note: NSManagedObject, Identifiable {
     @NSManaged public var richContent: Data?
     @NSManaged public var createdAt: Date?
     @NSManaged public var updatedAt: Date?
+    @NSManaged public var isInTrash: Bool
     @NSManaged public var folder: Folder?
     @NSManaged public var images: NSSet?
     @NSManaged public var tags: NSSet?
@@ -75,7 +76,7 @@ extension Note {
     // 获取特定文件夹下的笔记，按更新时间降序排列
     static func fetchRequestForFolder(folder: Folder) -> NSFetchRequest<Note> {
         let request: NSFetchRequest<Note> = Note.fetchRequest()
-        request.predicate = NSPredicate(format: "folder == %@", folder)
+        request.predicate = NSPredicate(format: "folder == %@ AND isInTrash == NO", folder)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
         return request
     }
@@ -83,7 +84,15 @@ extension Note {
     // 获取特定文件夹和标签下的笔记，按更新时间降序排列
     static func fetchRequestForFolderAndTag(folder: Folder, tag: Tag) -> NSFetchRequest<Note> {
         let request: NSFetchRequest<Note> = Note.fetchRequest()
-        request.predicate = NSPredicate(format: "folder == %@ AND ANY tags == %@", folder, tag)
+        request.predicate = NSPredicate(format: "folder == %@ AND ANY tags == %@ AND isInTrash == NO", folder, tag)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
+        return request
+    }
+    
+    // 获取已删除的笔记
+    static func fetchRequestForDeletedNotes() -> NSFetchRequest<Note> {
+        let request: NSFetchRequest<Note> = Note.fetchRequest()
+        request.predicate = NSPredicate(format: "isInTrash == YES")
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
         return request
     }

@@ -15,6 +15,7 @@ struct ContentView: View {
     @StateObject private var folderViewModel: FolderViewModel
     @StateObject private var noteViewModel: NoteViewModel
     @StateObject private var searchViewModel = SearchViewModel(viewContext: PersistenceController.shared.container.viewContext)
+    @StateObject private var trashViewModel: TrashViewModel
     
     @FetchRequest(
         fetchRequest: Folder.allFoldersFetchRequest(),
@@ -25,15 +26,18 @@ struct ContentView: View {
     @State private var hasError = false
     @State private var errorMessage = ""
     @State private var showSearchSheet = false
+    @State private var showTrashView = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     init() {
         let viewContext = PersistenceController.shared.container.viewContext
         let folderVM = FolderViewModel(viewContext: viewContext)
         let noteVM = NoteViewModel(viewContext: viewContext, folderViewModel: folderVM)
+        let trashVM = TrashViewModel(viewContext: viewContext, folderViewModel: folderVM, noteViewModel: noteVM)
         
         _folderViewModel = StateObject(wrappedValue: folderVM)
         _noteViewModel = StateObject(wrappedValue: noteVM)
+        _trashViewModel = StateObject(wrappedValue: trashVM)
     }
     
     var body: some View {
@@ -63,6 +67,11 @@ struct ContentView: View {
                 noteViewModel: noteViewModel,
                 folderViewModel: folderViewModel
             )
+        }
+        // 添加回收站视图
+        .sheet(isPresented: $showTrashView) {
+            TrashView(trashViewModel: trashViewModel)
+                .environment(\.managedObjectContext, viewContext)
         }
     }
     
@@ -113,6 +122,46 @@ struct ContentView: View {
                 
                 // 标签列表
                 TagSelectionListView(noteViewModel: noteViewModel)
+                
+                // 分隔线
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(height: 1)
+                    .padding(.vertical, 5)
+                
+                // 回收站按钮
+                Button(action: {
+                    showTrashView = true
+                }) {
+                    HStack {
+                        SwiftUI.Image(systemName: "trash.fill")
+                            .foregroundColor(.red)
+                            .font(.headline)
+                        
+                        Text("回收站")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // 显示回收站项目数量
+                        let itemCount = trashViewModel.getTrashItemCount()
+                        if itemCount > 0 {
+                            Text("\(itemCount)")
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.red)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .background(Color.clear)
+                
+                Spacer() // 推动内容到顶部
             }
             .onChange(of: folderViewModel.selectedFolder) { _, selectedFolder in
                 // 当选中文件夹时，确保修改列可见性，避免直接跳到笔记编辑界面
@@ -188,6 +237,10 @@ struct ContentView: View {
             .animation(.navigationPush, value: noteViewModel.selectedNote != nil)
         }
         .navigationSplitViewStyle(.balanced)
+        .onChange(of: trashViewModel.trashUpdated) { _, _ in
+            // 刷新回收站状态
+            viewContext.refreshAllObjects()
+        }
     }
 }
 

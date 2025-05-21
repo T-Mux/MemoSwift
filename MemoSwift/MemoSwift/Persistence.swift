@@ -301,6 +301,13 @@ class PersistenceController {
         folderCreatedAtAttribute.attributeType = .dateAttributeType
         folderCreatedAtAttribute.isOptional = true
         
+        // 添加isInTrash属性
+        let folderIsInTrashAttribute = NSAttributeDescription()
+        folderIsInTrashAttribute.name = "isInTrash"
+        folderIsInTrashAttribute.attributeType = .booleanAttributeType
+        folderIsInTrashAttribute.isOptional = false
+        folderIsInTrashAttribute.defaultValue = false
+        
         // 创建Note实体
         let noteEntity = NSEntityDescription()
         noteEntity.name = "Note"
@@ -332,6 +339,13 @@ class PersistenceController {
         noteCreatedAtAttribute.name = "createdAt"
         noteCreatedAtAttribute.attributeType = .dateAttributeType
         noteCreatedAtAttribute.isOptional = true
+        
+        // 添加isInTrash属性
+        let noteIsInTrashAttribute = NSAttributeDescription()
+        noteIsInTrashAttribute.name = "isInTrash"
+        noteIsInTrashAttribute.attributeType = .booleanAttributeType
+        noteIsInTrashAttribute.isOptional = false
+        noteIsInTrashAttribute.defaultValue = false
         
         let noteUpdatedAtAttribute = NSAttributeDescription()
         noteUpdatedAtAttribute.name = "updatedAt"
@@ -418,6 +432,7 @@ class PersistenceController {
             noteRichContentAttribute,
             noteCreatedAtAttribute, 
             noteUpdatedAtAttribute, 
+            noteIsInTrashAttribute,
             notesToFolderRelationship,
             noteToImagesRelationship
         ]
@@ -426,6 +441,7 @@ class PersistenceController {
             folderIdAttribute, 
             folderNameAttribute, 
             folderCreatedAtAttribute, 
+            folderIsInTrashAttribute,
             folderToNotesRelationship, 
             childToParentRelationship, 
             parentToChildrenRelationship

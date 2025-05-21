@@ -13,20 +13,21 @@ public class Folder: NSManagedObject, Identifiable {
     @NSManaged public var id: UUID?
     @NSManaged public var name: String
     @NSManaged public var createdAt: Date?
+    @NSManaged public var isInTrash: Bool
     @NSManaged public var notes: NSSet?
     @NSManaged public var parentFolder: Folder?
     @NSManaged public var childFolders: NSSet?
     
-    // 获取按更新时间排序的笔记数组
+    // 获取按更新时间排序的笔记数组（不包含已删除的笔记）
     public var notesArray: [Note] {
         let set = notes as? Set<Note> ?? []
-        return set.sorted { $0.updatedAt ?? Date() > $1.updatedAt ?? Date() }
+        return set.filter { !$0.isInTrash }.sorted { $0.updatedAt ?? Date() > $1.updatedAt ?? Date() }
     }
     
-    // 获取按名称排序的子文件夹数组
+    // 获取按名称排序的子文件夹数组（不包含已删除的文件夹）
     public var childFoldersArray: [Folder] {
         let set = childFolders as? Set<Folder> ?? []
-        return set.sorted { $0.name < $1.name }
+        return set.filter { !$0.isInTrash }.sorted { $0.name < $1.name }
     }
     
     // 判断是否为根文件夹（没有父文件夹）
@@ -49,18 +50,26 @@ extension Folder {
         return NSFetchRequest<Folder>(entityName: "Folder")
     }
     
-    // 获取所有根文件夹，按名称排序
+    // 获取所有根文件夹的 fetchRequest
     static func allFoldersFetchRequest() -> NSFetchRequest<Folder> {
         let request: NSFetchRequest<Folder> = Folder.fetchRequest()
-        request.predicate = NSPredicate(format: "parentFolder == nil")
+        request.predicate = NSPredicate(format: "parentFolder == nil AND isInTrash == NO")
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Folder.name, ascending: true)]
         return request
     }
     
-    // 获取特定父文件夹下的子文件夹
-    static func childFoldersFetchRequest(parent: Folder) -> NSFetchRequest<Folder> {
+    // 获取子文件夹的 fetchRequest
+    static func childFoldersFetchRequest(for parentFolder: Folder) -> NSFetchRequest<Folder> {
         let request: NSFetchRequest<Folder> = Folder.fetchRequest()
-        request.predicate = NSPredicate(format: "parentFolder == %@", parent)
+        request.predicate = NSPredicate(format: "parentFolder == %@ AND isInTrash == NO", parentFolder)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Folder.name, ascending: true)]
+        return request
+    }
+    
+    // 获取所有已删除文件夹的 fetchRequest
+    static func deletedFoldersFetchRequest() -> NSFetchRequest<Folder> {
+        let request: NSFetchRequest<Folder> = Folder.fetchRequest()
+        request.predicate = NSPredicate(format: "isInTrash == YES")
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Folder.name, ascending: true)]
         return request
     }

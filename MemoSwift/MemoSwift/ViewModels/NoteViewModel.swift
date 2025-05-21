@@ -172,6 +172,30 @@ class NoteViewModel: ObservableObject {
     
     // 删除笔记
     func deleteNote(note: Note) {
+        // 标记为已删除而不是直接删除
+        note.isInTrash = true
+        note.updatedAt = Date()
+        saveContext()
+        
+        // 如果删除的是当前选中的笔记，则清除选择
+        if selectedNote == note {
+            selectedNote = nil
+        }
+        
+        // 通知刷新
+        noteUpdated = UUID()
+    }
+    
+    // 恢复已删除的笔记
+    func restoreNote(note: Note) {
+        note.isInTrash = false
+        note.updatedAt = Date()
+        saveContext()
+        noteUpdated = UUID()
+    }
+    
+    // 永久删除笔记
+    func permanentlyDeleteNote(note: Note) {
         viewContext.delete(note)
         saveContext()
         
@@ -181,6 +205,27 @@ class NoteViewModel: ObservableObject {
         }
         
         // 通知刷新
+        noteUpdated = UUID()
+    }
+    
+    // 获取所有已删除的笔记
+    func fetchDeletedNotes() -> [Note] {
+        let fetchRequest = Note.fetchRequestForDeletedNotes()
+        do {
+            return try viewContext.fetch(fetchRequest)
+        } catch {
+            print("获取已删除笔记时出错: \(error)")
+            return []
+        }
+    }
+    
+    // 清空回收站（永久删除所有已删除的笔记）
+    func emptyTrash() {
+        let deletedNotes = fetchDeletedNotes()
+        for note in deletedNotes {
+            viewContext.delete(note)
+        }
+        saveContext()
         noteUpdated = UUID()
     }
     
