@@ -229,8 +229,10 @@ struct NoteRowItem: View {
             
             // 使用异步处理，延迟处理笔记选择
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                // 使用更安全的方式处理笔记选择
-                if let id = note.id {
+                if let id = note.id, let folder = note.folder {
+                    // 首先设置选中的文件夹，确保导航到正确的文件夹
+                    noteViewModel.folderViewModel?.selectedFolder = folder
+                    
                     // 通过ID找到笔记，而不是直接使用传入的对象
                     let fetchRequest = NSFetchRequest<Note>(entityName: "Note")
                     fetchRequest.predicate = NSPredicate(format: "id == %@", id as CVarArg)
@@ -238,8 +240,17 @@ struct NoteRowItem: View {
                     do {
                         let notes = try noteViewModel.viewContext.fetch(fetchRequest)
                         if let foundNote = notes.first {
+                            // 先标记此笔记将被高亮显示
+                            noteViewModel.highlightedNoteID = id
+                            
                             // 使用UI主线程更新selectedNote
                             DispatchQueue.main.async {
+                                // 短暂延迟后清除高亮状态
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    noteViewModel.highlightedNoteID = nil
+                                }
+                                
+                                // 设置选中的笔记
                                 noteViewModel.selectedNote = foundNote
                             }
                         }

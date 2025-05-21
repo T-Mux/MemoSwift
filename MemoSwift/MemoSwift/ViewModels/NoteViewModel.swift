@@ -20,9 +20,14 @@ class NoteViewModel: ObservableObject {
     @Published var selectedNote: Note?
     // 笔记更新触发器，用于通知列表视图刷新
     @Published var noteUpdated = UUID()
+    // 添加高亮显示的笔记ID，用于在笔记列表中高亮显示特定笔记
+    @Published var highlightedNoteID: UUID?
+    // 引用文件夹视图模型，用于在点击标签相关笔记时设置选中文件夹
+    weak var folderViewModel: FolderViewModel?
     
-    init(viewContext: NSManagedObjectContext) {
+    init(viewContext: NSManagedObjectContext, folderViewModel: FolderViewModel? = nil) {
         self.viewContext = viewContext
+        self.folderViewModel = folderViewModel
     }
     
     // 设置选中笔记，确保清除旧的选择状态

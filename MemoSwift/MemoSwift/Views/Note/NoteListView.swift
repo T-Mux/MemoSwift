@@ -74,73 +74,94 @@ struct NoteListView: View {
     
     // 顶部栏提取为独立属性
     private var topBar: some View {
-        ZStack {
+        HStack(spacing: 16) {
+            // 返回按钮
+            Button(action: {
+                withAnimation(.navigationPop) {
+                    onBack()
+                }
+            }) {
+                HStack(spacing: 4) {
+                    SwiftUI.Image(systemName: "chevron.left")
+                        .font(.body)
+                    Text("返回")
+                        .lineLimit(1)
+                }
+                .foregroundColor(.blue)
+            }
+            .padding(.leading)
+            
+            Spacer()
+            
+            // 文件夹标题
             Text(folder.name)
                 .font(.headline)
-                .fontWeight(.semibold)
                 .lineLimit(1)
-                .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .center)
-            HStack {
-                Button(action: {
-                    onBack()
-                }) {
-                    HStack(spacing: 4) {
-                        SwiftUI.Image(systemName: "chevron.left")
-                            .font(.body)
-                        Text("文件夹")
-                            .font(.body)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    .foregroundColor(.blue)
-                }
-                .padding(.leading)
-                .frame(width: 100, alignment: .leading)
-                Spacer()
+            
+            Spacer()
+            
+            // 右侧操作按钮
+            HStack(spacing: 16) {
+                // 标签过滤按钮
                 Button(action: {
                     showingTagFilter = true
                 }) {
-                    HStack {
-                        SwiftUI.Image(systemName: "tag")
-                        if let tag = selectedTag {
-                            Text(tag.wrappedName)
-                                .font(.caption)
-                        }
-                    }
-                    .foregroundColor(selectedTag != nil ? .blue : .gray)
-                }
-                .padding(.trailing)
-                Menu {
-                    Button(action: {
-                        let newNote = noteViewModel.createNote(
-                            title: "",
-                            content: "",
-                            folder: folder
-                        )
-                        noteViewModel.setSelectedNote(newNote)
-                    }) {
-                        Label("新建笔记", systemImage: "square.and.pencil")
-                    }
-                    Button(action: {
-                        showOCRView = true
-                    }) {
-                        Label("OCR文字识别", systemImage: "text.viewfinder")
-                    }
-                } label: {
-                    SwiftUI.Image(systemName: "plus")
-                        .font(.title3)
+                    SwiftUI.Image(systemName: "tag")
+                        .font(.body)
                         .foregroundColor(.blue)
-                        .frame(width: 44, height: 44)
-                        .background(Color(.systemGray6))
-                        .clipShape(Circle())
                 }
-                .padding(.trailing)
-                .frame(width: 100, alignment: .trailing)
+                
+                // 新建笔记按钮
+                Button(action: {
+                    // 在当前文件夹创建新笔记
+                    let newNote = noteViewModel.createNote(
+                        title: "新笔记",
+                        content: "",
+                        folder: folder
+                    )
+                    
+                    // 设置新笔记为当前选中
+                    noteViewModel.setSelectedNote(newNote)
+                }) {
+                    SwiftUI.Image(systemName: "square.and.pencil")
+                        .font(.body)
+                        .foregroundColor(.blue)
+                }
+                
+                // OCR功能按钮
+                Button(action: {
+                    showOCRView = true
+                }) {
+                    SwiftUI.Image(systemName: "doc.text.viewfinder")
+                        .font(.body)
+                        .foregroundColor(.blue)
+                }
             }
+            .padding(.trailing)
         }
         .padding(.vertical, 8)
-        .background(Color(.systemBackground))
+        .overlay(
+            // 添加高亮提示标签，显示从哪个标签跳转过来的
+            Group {
+                if noteViewModel.highlightedNoteID != nil {
+                    HStack {
+                        SwiftUI.Image(systemName: "tag.fill")
+                            .foregroundColor(.orange)
+                        Text("已定位到标签相关笔记")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                    .transition(.opacity)
+                    .offset(y: 30)
+                }
+            }
+        )
+        .animation(.easeInOut(duration: 0.3), value: noteViewModel.highlightedNoteID != nil)
     }
     
     // 标签过滤弹窗提取为独立属性

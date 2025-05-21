@@ -30,7 +30,7 @@ struct ContentView: View {
     init() {
         let viewContext = PersistenceController.shared.container.viewContext
         let folderVM = FolderViewModel(viewContext: viewContext)
-        let noteVM = NoteViewModel(viewContext: viewContext)
+        let noteVM = NoteViewModel(viewContext: viewContext, folderViewModel: folderVM)
         
         _folderViewModel = StateObject(wrappedValue: folderVM)
         _noteViewModel = StateObject(wrappedValue: noteVM)

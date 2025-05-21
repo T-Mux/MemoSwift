@@ -57,6 +57,13 @@ struct NoteRow: View {
             // 长按显示操作菜单
             isShowingMenu = true
         }
+        // 添加高亮效果
+        .background(
+            isHighlighted ? Color.blue.opacity(0.15) : Color.clear
+        )
+        .cornerRadius(4)
+        // 添加高亮时的动画效果
+        .animation(.easeInOut(duration: 0.3), value: isHighlighted)
         .contentTransition(.interpolate) // 更平滑的内容更新过渡效果
         .contextMenu {
             // 上下文菜单支持（右键菜单）
@@ -112,6 +119,15 @@ struct NoteRow: View {
         } message: {
             Text("确定要删除笔记 \"\(note.wrappedTitle.isEmpty ? "无标题" : note.wrappedTitle)\" 吗？此操作无法撤销。")
         }
+    }
+    
+    // 检查当前笔记是否需要高亮显示
+    private var isHighlighted: Bool {
+        if let highlightedID = noteViewModel.highlightedNoteID,
+           let noteID = note.id {
+            return highlightedID == noteID
+        }
+        return false
     }
     
     // 分享笔记功能
