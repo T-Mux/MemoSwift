@@ -13,7 +13,8 @@ import UIKit
 import Vision
 
 class NoteViewModel: ObservableObject {
-    private var viewContext: NSManagedObjectContext
+    // 修改为公开属性，允许外部访问
+    let viewContext: NSManagedObjectContext
     
     // 当前选中的笔记
     @Published var selectedNote: Note?

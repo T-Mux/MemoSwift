@@ -79,11 +79,50 @@ struct ContentView: View {
     
     var mainView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            // First column: Folders
-            FolderListView(
-                folderViewModel: folderViewModel
-            )
-            .environmentObject(noteViewModel)
+            // First column: Folders and Tags
+            VStack(spacing: 0) {
+                // 标题区域
+                HStack {
+                    Text("MemoSwift")
+                        .font(.title)
+                        .bold()
+                    
+                    Spacer()
+                    
+                    Button {
+                        showSearchSheet = true
+                    } label: {
+                        SwiftUI.Image(systemName: "magnifyingglass")
+                            .imageScale(.large)
+                    }
+                    .padding(.trailing, 8)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                
+                // 完全恢复原始Layout
+                // 文件夹列表
+                FolderListView(folderViewModel: folderViewModel)
+                    .environmentObject(noteViewModel)
+                
+                // 分隔线
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(height: 1)
+                    .padding(.vertical, 5)
+                
+                // 标签列表
+                TagSelectionListView(noteViewModel: noteViewModel)
+            }
+            .onChange(of: folderViewModel.selectedFolder) { _, selectedFolder in
+                // 当选中文件夹时，确保修改列可见性，避免直接跳到笔记编辑界面
+                if selectedFolder != nil {
+                    withAnimation(.navigationPush) {
+                        // 确保文件夹选中时，columns显示为前两列
+                        columnVisibility = .doubleColumn
+                    }
+                }
+            }
             .onChange(of: noteViewModel.selectedNote) { _, note in
                 if note != nil {
                     // 当选中笔记时，确保显示详情视图
@@ -92,6 +131,8 @@ struct ContentView: View {
                         if let selectedNote = note {
                             viewContext.refresh(selectedNote, mergeChanges: true)
                         }
+                        
+                        // 确保笔记编辑器显示
                         columnVisibility = .detailOnly
                     }
                 }
@@ -130,8 +171,12 @@ struct ContentView: View {
                             // 返回笔记列表
                             withAnimation(.navigationPop) {
                                 noteViewModel.selectedNote = nil
-                                // 在iPhone上恢复到上一列
-                                columnVisibility = .automatic
+                                // 确保正确回到列表视图
+                                if folderViewModel.selectedFolder != nil {
+                                    columnVisibility = .doubleColumn
+                                } else {
+                                    columnVisibility = .automatic
+                                }
                             }
                         }
                     )
@@ -150,6 +195,7 @@ struct EmptyNoteSelectionView: View {
     var body: some View {
         VStack {
             SwiftUI.Image(systemName: "folder.badge.questionmark")
+                .imageScale(.large)
                 .font(.system(size: 50))
                 .foregroundColor(.blue)
                 .padding()

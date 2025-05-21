@@ -218,8 +218,13 @@ struct NoteEditorView: View {
                 HStack {
                     ForEach(selectedTags, id: \.id) { tag in
                         tagChip(for: tag)
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.8).combined(with: .opacity),
+                                removal: .scale(scale: 0.6).combined(with: .opacity)
+                            ))
                     }
                 }
+                .animation(.spring(response: 0.3), value: selectedTags.count)
             }
             Button(action: {
                 showingTagManager = true
@@ -309,8 +314,11 @@ struct NoteEditorView: View {
             Text(tag.wrappedName)
                 .font(.caption)
             Button(action: {
-                noteViewModel.removeTagFromNote(note: note, tag: tag)
-                loadNoteTags()
+                // 添加动画效果
+                withAnimation(.spring(response: 0.3)) {
+                    noteViewModel.removeTagFromNote(note: note, tag: tag)
+                    loadNoteTags()
+                }
             }) {
                 SwiftUI.Image(systemName: "xmark.circle.fill")
                     .foregroundColor(Color.red)
@@ -366,16 +374,22 @@ struct NoteEditorView: View {
             selectedTags: selectedTags,
             newTagName: $newTagName,
             onAddTag: { tagName in
-                _ = noteViewModel.addTagToNote(note: note, tagName: tagName)
-                loadNoteTags()
+                // 添加动画效果
+                withAnimation(.spring(response: 0.3)) {
+                    _ = noteViewModel.addTagToNote(note: note, tagName: tagName)
+                    loadNoteTags()
+                }
                 // 防止富文本功能栏自动弹出
                 withAnimation(.none) {
                     focusTextEditor = false
                 }
             },
             onRemoveTag: { tag in
-                noteViewModel.removeTagFromNote(note: note, tag: tag)
-                loadNoteTags()
+                // 添加动画效果
+                withAnimation(.spring(response: 0.3)) {
+                    noteViewModel.removeTagFromNote(note: note, tag: tag)
+                    loadNoteTags()
+                }
                 // 防止富文本功能栏自动弹出
                 withAnimation(.none) {
                     focusTextEditor = false
@@ -424,7 +438,12 @@ struct TagListContainer: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 ForEach(selectedTags, id: \.id) { tag in
                                     selectedTagButton(for: tag)
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.9).combined(with: .opacity),
+                                            removal: .scale(scale: 0.8).combined(with: .opacity)
+                                        ))
                                 }
+                                .animation(.spring(response: 0.3), value: selectedTags.count)
                             }
                         }
                         .frame(maxHeight: 150)
@@ -490,7 +509,12 @@ struct TagListContainer: View {
             LazyVStack(alignment: .leading) {
                 ForEach(availableTags, id: \.id) { tag in
                     tagButton(for: tag)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
                 }
+                .animation(.spring(response: 0.3), value: availableTags.count)
             }
         }
         .frame(maxHeight: 150)
