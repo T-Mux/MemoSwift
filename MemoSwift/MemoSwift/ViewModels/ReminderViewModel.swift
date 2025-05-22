@@ -50,6 +50,9 @@ class ReminderViewModel: ObservableObject {
     // 创建新提醒
     @discardableResult
     func createReminder(for note: Note, title: String, date: Date, repeatType: Reminder.RepeatType = .none) -> Reminder {
+        // 首先刷新笔记状态
+        viewContext.refresh(note, mergeChanges: true)
+        
         let newReminder = Reminder(context: viewContext)
         newReminder.id = UUID()
         newReminder.title = title
@@ -66,6 +69,11 @@ class ReminderViewModel: ObservableObject {
         note.addReminder(newReminder)
         
         saveContext()
+        
+        // 刷新笔记和提醒状态
+        viewContext.refresh(note, mergeChanges: true)
+        viewContext.refresh(newReminder, mergeChanges: true)
+        
         reminderUpdated = UUID()
         
         // 安排本地通知
@@ -76,6 +84,9 @@ class ReminderViewModel: ObservableObject {
     
     // 更新现有提醒
     func updateReminder(reminder: Reminder, title: String, date: Date, isActive: Bool, repeatType: Reminder.RepeatType) {
+        // 首先确保reminder对象是最新的
+        viewContext.refresh(reminder, mergeChanges: true)
+        
         // 更新提醒信息
         reminder.title = title
         reminder.reminderDate = date
@@ -87,6 +98,12 @@ class ReminderViewModel: ObservableObject {
         
         // 刷新提醒状态
         viewContext.refresh(reminder, mergeChanges: true)
+        
+        // 如果有note，也刷新note
+        if let note = reminder.note {
+            viewContext.refresh(note, mergeChanges: true)
+            note.refreshReminders(context: viewContext)
+        }
         
         // 通知视图更新
         reminderUpdated = UUID()
@@ -105,14 +122,24 @@ class ReminderViewModel: ObservableObject {
         // 先取消通知
         cancelNotification(for: reminder)
         
+        // 获取关联的笔记
+        let associatedNote = reminder.note
+        
         // 从笔记中移除提醒
-        if let note = reminder.note {
+        if let note = associatedNote {
             note.removeReminder(reminder)
         }
         
         // 删除提醒
         viewContext.delete(reminder)
         saveContext()
+        
+        // 如果有关联的笔记，刷新其状态
+        if let note = associatedNote {
+            viewContext.refresh(note, mergeChanges: true)
+            note.refreshReminders(context: viewContext)
+        }
+        
         reminderUpdated = UUID()
     }
     

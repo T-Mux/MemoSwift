@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreData
 
 struct ReminderListView: View {
     @ObservedObject var reminderViewModel: ReminderViewModel
@@ -14,6 +15,8 @@ struct ReminderListView: View {
     @State private var showAddReminderSheet = false
     @State private var selectedReminder: Reminder?
     @State private var showEditReminderSheet = false
+    @State private var isPreparingReminder = false // 添加状态表示正在准备提醒数据
+    @State private var preparedReminderId: UUID? // 保存已准备好的提醒ID
     
     var body: some View {
         VStack(spacing: 0) {
@@ -70,8 +73,11 @@ struct ReminderListView: View {
                                 ReminderRow(reminder: reminder)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
-                                        selectedReminder = reminder
-                                        showEditReminderSheet = true
+                                        // 显示加载状态
+                                        isPreparingReminder = true
+                                        // 先保存ID然后准备提醒
+                                        preparedReminderId = reminder.id
+                                        prepareAndEditReminder(reminder)
                                     }
                             }
                         }
@@ -85,8 +91,11 @@ struct ReminderListView: View {
                                 ReminderRow(reminder: reminder)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
-                                        selectedReminder = reminder
-                                        showEditReminderSheet = true
+                                        // 显示加载状态
+                                        isPreparingReminder = true
+                                        // 先保存ID然后准备提醒
+                                        preparedReminderId = reminder.id
+                                        prepareAndEditReminder(reminder)
                                     }
                             }
                         }
@@ -105,6 +114,8 @@ struct ReminderListView: View {
         .sheet(isPresented: $showEditReminderSheet, onDismiss: {
             // 清空选中的提醒，避免在下一次打开时使用过期的引用
             selectedReminder = nil
+            preparedReminderId = nil
+            isPreparingReminder = false
         }) {
             if let reminderToEdit = selectedReminder {
                 ReminderSettingView(
@@ -112,6 +123,25 @@ struct ReminderListView: View {
                     note: note,
                     existingReminder: reminderToEdit
                 )
+            } else if isPreparingReminder {
+                // 显示加载指示器
+                VStack {
+                    ProgressView()
+                        .padding()
+                    Text("加载提醒数据...")
+                        .font(.headline)
+                }
+                .onAppear {
+                    // 如果有保存的ID，尝试再次获取
+                    if let savedId = preparedReminderId {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            fetchReminderById(savedId)
+                        }
+                    } else {
+                        // 如果没有ID，关闭sheet
+                        showEditReminderSheet = false
+                    }
+                }
             }
         }
         // 在视图出现时刷新提醒
@@ -123,6 +153,61 @@ struct ReminderListView: View {
         .onReceive(reminderViewModel.$reminderUpdated) { _ in
             // 刷新提醒列表
             note.refreshReminders(context: reminderViewModel.viewContext)
+            
+            // 如果当前正在编辑提醒，尝试刷新选中的提醒
+            if showEditReminderSheet, let reminderId = preparedReminderId {
+                fetchReminderById(reminderId)
+            }
+        }
+    }
+    
+    // 准备并编辑提醒 - 确保获取最新的提醒对象
+    private func prepareAndEditReminder(_ reminder: Reminder) {
+        guard let reminderId = reminder.id else { 
+            isPreparingReminder = false
+            return 
+        }
+        
+        // 先展示加载界面
+        showEditReminderSheet = true
+        
+        // 然后异步获取提醒数据
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            fetchReminderById(reminderId)
+        }
+    }
+    
+    // 通过ID获取提醒
+    private func fetchReminderById(_ reminderId: UUID) {
+        // 使用ID重新获取提醒对象，确保获取最新状态
+        let fetchRequest: NSFetchRequest<Reminder> = Reminder.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "id == %@", reminderId as CVarArg)
+        fetchRequest.fetchLimit = 1
+        
+        do {
+            let results = try reminderViewModel.viewContext.fetch(fetchRequest)
+            if let freshReminder = results.first {
+                // 确保视图上下文中的对象是最新的
+                reminderViewModel.viewContext.refresh(freshReminder, mergeChanges: true)
+                
+                // 更新选中的提醒并关闭加载状态
+                DispatchQueue.main.async {
+                    selectedReminder = freshReminder
+                    isPreparingReminder = false
+                }
+            } else {
+                print("错误：无法找到ID为 \(reminderId) 的提醒")
+                DispatchQueue.main.async {
+                    isPreparingReminder = false
+                    showEditReminderSheet = false
+                }
+            }
+        } catch {
+            print("获取提醒时出错: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                isPreparingReminder = false
+                showEditReminderSheet = false
+            }
         }
     }
 }

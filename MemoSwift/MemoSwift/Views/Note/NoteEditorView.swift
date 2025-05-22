@@ -97,10 +97,13 @@ struct NoteEditorView: View {
                 queue: .main
             ) { [self] notification in
                 if let userInfo = notification.userInfo,
-                   let sourceRaw = userInfo["source"] as? String {
-                    // 根据字符串确定图片来源
-                    let source: PhotoSource = (sourceRaw == "camera") ? .camera : .photoLibrary
-                    handleImageRequest(source: source)
+                   let sourceRaw = userInfo["source"] as? Int {
+                    // 确保在主线程处理UI操作
+                    DispatchQueue.main.async {
+                        // 根据整数值确定图片来源
+                        let source: PhotoSource = (sourceRaw == 0) ? .camera : .photoLibrary
+                        handleImageRequest(source: source)
+                    }
                 }
             }
             loadNoteTags()

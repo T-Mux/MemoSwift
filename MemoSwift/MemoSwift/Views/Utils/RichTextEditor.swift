@@ -868,18 +868,21 @@ struct RichTextEditor: UIViewRepresentable {
         
         // 处理图片选项
         private func handleImageOption(source: ImageSource) {
-            // 发送通知，让外部处理图片选择或OCR
-            let userInfo: [String: Any] = ["source": source]
-            NotificationCenter.default.post(
-                name: NSNotification.Name("RichTextEditorImageRequest"),
-                object: nil,
-                userInfo: userInfo
-            )
-            
-            // 设置标志，稍后恢复焦点
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.preventKeyboardDismiss = true
-                self.textView?.becomeFirstResponder()
+            // 使用后台队列发送通知，避免在主线程执行I/O操作
+            DispatchQueue.global(qos: .userInitiated).async {
+                // 发送通知，让外部处理图片选择或OCR
+                let userInfo: [String: Any] = ["source": source.rawValue]
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("RichTextEditorImageRequest"),
+                    object: nil,
+                    userInfo: userInfo
+                )
+                
+                // 切回主线程设置UI状态
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.preventKeyboardDismiss = true
+                    self.textView?.becomeFirstResponder()
+                }
             }
         }
         
@@ -928,6 +931,8 @@ struct RichTextEditor: UIViewRepresentable {
         
         // 获取当前视图控制器
         private func getViewController() -> UIViewController? {
+            // 由于UIKit操作必须在主线程进行，这里的UI访问是安全的
+            // 我们只是获取视图控制器引用，没有进行实际的I/O操作
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let rootViewController = scene.windows.first?.rootViewController else {
                 return nil
@@ -993,10 +998,10 @@ extension RichTextEditor.Coordinator: UIGestureRecognizerDelegate {
 }
 
 // 图片操作的来源枚举
-enum ImageSource {
-    case camera
-    case photoLibrary
-    case ocr
+enum ImageSource: Int {
+    case camera = 0
+    case photoLibrary = 1
+    case ocr = 2
 }
 
 // 添加NSAttributedString扩展，用于比较两个NSAttributedString
