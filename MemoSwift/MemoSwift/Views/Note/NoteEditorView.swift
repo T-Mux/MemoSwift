@@ -91,6 +91,9 @@ struct NoteEditorView: View {
         }
         .transition(.move(edge: .trailing))
         .onAppear {
+            // 确保每次笔记出现时重新加载最新内容
+            refreshNoteContent()
+            
             NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("RichTextEditorImageRequest"),
                 object: nil,
@@ -212,24 +215,35 @@ struct NoteEditorView: View {
     }
     
     // 标题输入框部分
-    private var titleField: some View {
+        private var titleField: some View {
         HStack {
-            TextField("标题", text: $title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .focused($isTitleFocused)
-                .onTapGesture {
-                    isTitleFocused = true
-                    focusTextEditor = false
+        TextField("标题", text: $title)
+            .font(.title2)
+            .fontWeight(.bold)
+            .focused($isTitleFocused)
+            .onTapGesture {
+                isTitleFocused = true
+                focusTextEditor = false
+            }
+            .onChange(of: title) { _, newValue in
+                // 延迟保存，避免保存时焦点意外转移
+                debounceTimer?.invalidate()
+                debounceTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
+                    if !isTitleFocused { // 只在标题不再聚焦时保存
+                        saveChanges()
+                    }
                 }
-                .onChange(of: title) { _, _ in
-                    debounceSave()
-                }
-                .submitLabel(.done)
-                .onSubmit {
-                    isTitleFocused = false
+            }
+            .submitLabel(.done)
+            .onSubmit {
+                isTitleFocused = false
+                // 延迟设置富文本焦点，避免冲突
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     focusTextEditor = true
                 }
+                // 立即保存标题变更
+                saveChanges()
+            }
             
             // 显示提醒状态
             if note.hasActiveReminders {
@@ -412,21 +426,29 @@ struct NoteEditorView: View {
     }
     
     // 富文本编辑器部分
-    private var richTextEditorSection: some View {
+        private var richTextEditorSection: some View {
         Group {
             RichTextEditor(
-                attributedText: $attributedContent,
-                focus: $focusTextEditor,
-                canUndo: $canUndo,
-                canRedo: $canRedo,
+            attributedText: $attributedContent,
+            focus: $focusTextEditor,
+            canUndo: $canUndo,
+            canRedo: $canRedo,
                 onCommit: { newContent in
                     attributedContent = newContent
-                    debounceSave()
+                    // 不要在内容更新时自动保存，避免干扰标题编辑
+                    if !isTitleFocused {
+                        debounceSave()
+                    }
                 }
             )
             .onChange(of: attributedContent) { _, _ in
-                debounceSave()
+                // 不要在内容更新时自动保存，避免干扰标题编辑
+                if !isTitleFocused {
+                    debounceSave()
+                }
             }
+            // 禁止在标题获得焦点时同时获取富文本编辑器焦点
+            .allowsHitTesting(!isTitleFocused)
         }
     }
     
@@ -497,19 +519,52 @@ struct NoteEditorView: View {
     
     // 保存笔记变更
     private func saveChanges() {
+        // 如果标题正在编辑，延迟保存
+        if isTitleFocused {
+            print("标题正在编辑，延迟保存")
+            return
+        }
+        
+        // 先刷新笔记确保使用最新对象
+        viewContext.refresh(note, mergeChanges: true)
+        
         // 将当前富文本内容保存回笔记
-        noteViewModel.updateNoteWithRichContent(
-            note: note,
-            title: title,
-            attributedContent: attributedContent
-        )
+        DispatchQueue.main.async {
+            self.noteViewModel.updateNoteWithRichContent(
+                note: self.note,
+                title: self.title,
+                attributedContent: self.attributedContent
+            )
+            print("笔记已保存: \(self.title)")
+        }
+    }
+    
+    // 刷新笔记内容
+    private func refreshNoteContent() {
+        // 刷新笔记数据，确保使用最新状态
+        viewContext.refresh(note, mergeChanges: true)
+        
+        // 重新加载标题和富文本内容
+        DispatchQueue.main.async {
+            self.title = self.note.wrappedTitle
+            self.attributedContent = self.note.wrappedRichContent
+            self.selectedTags = self.noteViewModel.fetchTagsForNote(note: self.note)
+        }
+        
+        print("已刷新笔记内容: \(note.wrappedTitle)")
     }
     
     // 延迟保存（防止频繁保存）
     private func debounceSave() {
+        // 如果标题正在编辑，不要触发保存，避免焦点切换
+        guard !isTitleFocused else { return }
+        
         debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
-            saveChanges()
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+            // 使用非捕获的self引用，因为struct不需要weak
+            if !self.isTitleFocused {
+                self.saveChanges()
+            }
         }
     }
     

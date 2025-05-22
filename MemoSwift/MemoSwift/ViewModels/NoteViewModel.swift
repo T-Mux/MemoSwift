@@ -35,15 +35,41 @@ class NoteViewModel: ObservableObject {
         // 先清除选中状态，确保视图完全刷新
         self.selectedNote = nil
         
+        guard let noteToSelect = note else {
+            return // 如果传入nil，直接返回，保持选中笔记为nil
+        }
+        
+        // 获取笔记ID
+        guard let noteId = noteToSelect.id else {
+            print("警告: 试图选择没有ID的笔记")
+            return
+        }
+        
         // 使用微小的延迟确保UI状态更新
         DispatchQueue.main.async {
-            if let note = note {
-                // 刷新笔记数据确保最新状态
-                self.viewContext.refresh(note, mergeChanges: true)
-            }
+            // 根据ID重新获取笔记对象，确保使用最新的实例
+            let fetchRequest: NSFetchRequest<Note> = Note.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "id == %@", noteId as CVarArg)
+            fetchRequest.fetchLimit = 1
             
-            // 设置新的选中笔记
-            self.selectedNote = note
+            do {
+                let results = try self.viewContext.fetch(fetchRequest)
+                if let freshNote = results.first {
+                    // 设置新的选中笔记
+                    self.selectedNote = freshNote
+                    print("已选择笔记: \(freshNote.wrappedTitle)")
+                } else {
+                    // 如果找不到笔记，使用原始对象但先刷新
+                    self.viewContext.refresh(noteToSelect, mergeChanges: true)
+                    self.selectedNote = noteToSelect
+                    print("找不到最新笔记对象，使用原始对象: \(noteToSelect.wrappedTitle)")
+                }
+            } catch {
+                // 出错时使用原始对象但先刷新
+                print("选择笔记时出错: \(error)")
+                self.viewContext.refresh(noteToSelect, mergeChanges: true)
+                self.selectedNote = noteToSelect
+            }
         }
     }
     

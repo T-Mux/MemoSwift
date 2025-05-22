@@ -71,20 +71,30 @@ struct RichTextEditor: UIViewRepresentable {
             }
         }
         
-        // 更新撤销重做状态
-        context.coordinator.updateUndoRedoState()
+        // 不在view update期间直接更新状态，使用Task以避免"在视图更新期间修改状态"警告
+        Task { @MainActor in
+            // 更新撤销重做状态
+            context.coordinator.updateUndoRedoState()
+        }
         
-        // 只有当明确设置了focus为true时才获取焦点
-        if focus && !textView.isFirstResponder && !context.coordinator.isResigningFocus {
-            textView.becomeFirstResponder()
-            context.coordinator.preventKeyboardDismiss = true
-        } else if !focus && textView.isFirstResponder && context.coordinator.isResigningFocus {
-            // 只有明确设置了要放弃焦点，才真正放弃
-            textView.resignFirstResponder()
-            
-            // 延迟重置标志
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                context.coordinator.isResigningFocus = false
+        // 处理焦点变化
+        let shouldBecomeFirstResponder = focus && !textView.isFirstResponder && !context.coordinator.isResigningFocus
+        let shouldResignFirstResponder = !focus && textView.isFirstResponder && context.coordinator.isResigningFocus
+        
+        // 使用Task避免在view update期间直接改变UI状态
+        if shouldBecomeFirstResponder {
+            Task { @MainActor in
+                textView.becomeFirstResponder()
+                context.coordinator.preventKeyboardDismiss = true
+            }
+        } else if shouldResignFirstResponder {
+            Task { @MainActor in
+                textView.resignFirstResponder()
+                
+                // 延迟重置标志
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    context.coordinator.isResigningFocus = false
+                }
             }
         }
     }
@@ -255,9 +265,17 @@ struct RichTextEditor: UIViewRepresentable {
         
         func updateUndoRedoState() {
             if let textView = textView {
-                DispatchQueue.main.async {
-                    self.parent.canUndo = textView.undoManager?.canUndo ?? false
-                    self.parent.canRedo = textView.undoManager?.canRedo ?? false
+                // 使用 Task 和 MainActor 确保在正确的上下文中更新 UI 状态
+                Task { @MainActor in
+                    // 获取状态但不立即更新绑定值
+                    let canUndo = textView.undoManager?.canUndo ?? false
+                    let canRedo = textView.undoManager?.canRedo ?? false
+                    
+                    // 使用 withAnimation 避免在视图更新过程中修改状态
+                    DispatchQueue.main.async {
+                        self.parent.canUndo = canUndo
+                        self.parent.canRedo = canRedo
+                    }
                 }
             }
         }

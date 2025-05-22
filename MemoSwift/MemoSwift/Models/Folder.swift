@@ -42,6 +42,20 @@ public class Folder: NSManagedObject, Identifiable {
         }
         return name
     }
+    
+    // 计算所有笔记数量，包括子文件夹中的笔记
+    public var totalNotesCount: Int {
+        // 当前文件夹直接包含的笔记数量
+        let directNotesCount = notesArray.count
+        
+        // 所有子文件夹中的笔记数量总和
+        let childNotesCount = childFoldersArray.reduce(0) { total, childFolder in
+            return total + childFolder.totalNotesCount
+        }
+        
+        // 返回总和
+        return directNotesCount + childNotesCount
+    }
 }
 
 extension Folder {

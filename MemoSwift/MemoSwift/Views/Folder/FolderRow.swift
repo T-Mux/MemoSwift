@@ -28,7 +28,7 @@ struct FolderRow: View {
                     .font(.headline)
                 
                 HStack {
-                    Text("\(folder.notesArray.count) 条笔记")
+                    Text("\(folder.totalNotesCount) 条笔记")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
