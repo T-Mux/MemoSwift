@@ -27,6 +27,11 @@ struct ReminderSettingView: View {
         self.note = note
         self.existingReminder = existingReminder
         
+        // 确保existingReminder是最新状态
+        if let reminder = existingReminder {
+            reminderViewModel.viewContext.refresh(reminder, mergeChanges: true)
+        }
+        
         // 初始化状态
         if let reminder = existingReminder {
             _title = State(initialValue: reminder.title)
@@ -65,12 +70,12 @@ struct ReminderSettingView: View {
                 
                 if existingReminder != nil {
                     Section {
-                                            Button(action: deleteReminder) {
-                        HStack {
-                            SwiftUI.Image(systemName: "trash")
-                            Text("删除提醒")
-                        }
-                        .foregroundColor(.red)
+                        Button(action: deleteReminder) {
+                            HStack {
+                                SwiftUI.Image(systemName: "trash")
+                                Text("删除提醒")
+                            }
+                            .foregroundColor(.red)
                         }
                     }
                 }

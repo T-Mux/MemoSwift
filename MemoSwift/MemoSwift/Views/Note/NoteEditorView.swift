@@ -108,7 +108,12 @@ struct NoteEditorView: View {
         .sheet(isPresented: $showingTagManager) {
             tagManagerSheet
         }
-        .sheet(isPresented: $showingReminderList) {
+        .sheet(isPresented: $showingReminderList, onDismiss: {
+            // 关闭时重新刷新笔记状态
+            note.refreshReminders(context: viewContext)
+            viewContext.refresh(note, mergeChanges: true)
+            reminderViewModel.reminderUpdated = UUID() // 触发更新
+        }) {
             ReminderListView(reminderViewModel: reminderViewModel, note: note)
                 .presentationDetents([.medium, .large])
         }
@@ -163,14 +168,6 @@ struct NoteEditorView: View {
                 .padding(.leading)
                 Spacer()
                 HStack(spacing: 16) {
-                    Button(action: {
-                        showingImageOptions = true
-                    }) {
-                        SwiftUI.Image(systemName: "photo")
-                            .font(.body)
-                            .foregroundColor(.blue)
-                    }
-                    
                     Button(action: {
                         NotificationCenter.default.post(
                             name: NSNotification.Name("RichTextEditorUndo"),
@@ -234,6 +231,8 @@ struct NoteEditorView: View {
             // 显示提醒状态
             if note.hasActiveReminders {
                 Button(action: {
+                    // 刷新提醒状态后再显示列表
+                    note.refreshReminders(context: viewContext)
                     showingReminderList = true
                 }) {
                     ReminderIndicator(note: note)
@@ -248,6 +247,8 @@ struct NoteEditorView: View {
     private var reminderSection: some View {
         HStack {
             Button(action: {
+                // 刷新提醒状态后再显示列表
+                note.refreshReminders(context: viewContext)
                 showingReminderList = true
             }) {
                 HStack {

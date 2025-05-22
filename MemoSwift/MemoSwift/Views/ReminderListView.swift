@@ -102,18 +102,27 @@ struct ReminderListView: View {
             )
         }
         // 编辑现有提醒的表单
-        .sheet(isPresented: $showEditReminderSheet) {
-            if let reminder = selectedReminder {
+        .sheet(isPresented: $showEditReminderSheet, onDismiss: {
+            // 清空选中的提醒，避免在下一次打开时使用过期的引用
+            selectedReminder = nil
+        }) {
+            if let reminderToEdit = selectedReminder {
                 ReminderSettingView(
                     reminderViewModel: reminderViewModel,
                     note: note,
-                    existingReminder: reminder
+                    existingReminder: reminderToEdit
                 )
             }
+        }
+        // 在视图出现时刷新提醒
+        .onAppear {
+            // 刷新笔记中的提醒状态
+            note.refreshReminders(context: reminderViewModel.viewContext)
         }
         // 监听提醒更新
         .onReceive(reminderViewModel.$reminderUpdated) { _ in
             // 刷新提醒列表
+            note.refreshReminders(context: reminderViewModel.viewContext)
         }
     }
 }

@@ -170,4 +170,15 @@ extension Note {
         reminders.remove(reminder)
         self.reminders = reminders
     }
+    
+    // 刷新提醒状态
+    public func refreshReminders(context: NSManagedObjectContext) {
+        // 刷新所有提醒对象
+        for reminder in remindersArray {
+            context.refresh(reminder, mergeChanges: true)
+        }
+        
+        // 刷新当前笔记对象
+        context.refresh(self, mergeChanges: true)
+    }
 } 

@@ -82,7 +82,13 @@ class ReminderViewModel: ObservableObject {
         reminder.isActive = isActive
         reminder.repeatType = repeatType.rawValue
         
+        // 保存上下文
         saveContext()
+        
+        // 刷新提醒状态
+        viewContext.refresh(reminder, mergeChanges: true)
+        
+        // 通知视图更新
         reminderUpdated = UUID()
         
         // 取消并重新安排通知
