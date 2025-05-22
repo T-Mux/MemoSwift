@@ -18,7 +18,7 @@ class SearchViewModel: ObservableObject {
     // 搜索查询
     @Published var searchQuery: String = ""
     // 搜索模式
-    @Published var searchMode: SearchMode = .quick
+    @Published var searchMode: SearchMode = .fullText
     // 搜索状态
     @Published var isSearching: Bool = false
     // 是否有更多搜索结果
@@ -28,7 +28,6 @@ class SearchViewModel: ObservableObject {
     
     // 搜索模式
     enum SearchMode: String, CaseIterable, Identifiable {
-        case quick = "快速搜索"
         case fullText = "全文搜索"
         case tag = "标签搜索"
         
@@ -36,8 +35,6 @@ class SearchViewModel: ObservableObject {
         
         var description: String {
             switch self {
-            case .quick:
-                return "在笔记标题中搜索"
             case .fullText:
                 return "在笔记标题和内容中搜索"
             case .tag:
@@ -47,8 +44,6 @@ class SearchViewModel: ObservableObject {
         
         var iconName: String {
             switch self {
-            case .quick:
-                return "magnifyingglass"
             case .fullText:
                 return "doc.text.magnifyingglass"
             case .tag:
@@ -114,7 +109,7 @@ class SearchViewModel: ObservableObject {
         lastSearchTime = Date()
         
         switch searchMode {
-        case .quick, .fullText:
+        case .fullText:
             searchByTextContent()
         case .tag:
             searchByTag()
@@ -123,27 +118,15 @@ class SearchViewModel: ObservableObject {
         isSearching = false
     }
     
-    // 按文本内容搜索（标题或全文）
+    // 按文本内容搜索（标题和全文）
     private func searchByTextContent() {
         let fetchRequest: NSFetchRequest<Note> = Note.fetchRequest()
         
-        // 根据搜索模式设置谓词
-        switch searchMode {
-        case .quick:
-            // 快速搜索：仅搜索标题
-            fetchRequest.predicate = NSPredicate(
-                format: "title CONTAINS[cd] %@", 
-                searchQuery
-            )
-        case .fullText:
-            // 全文搜索：搜索标题和内容
-            fetchRequest.predicate = NSPredicate(
-                format: "title CONTAINS[cd] %@ OR content CONTAINS[cd] %@", 
-                searchQuery, searchQuery
-            )
-        default:
-            break
-        }
+        // 全文搜索：搜索标题和内容
+        fetchRequest.predicate = NSPredicate(
+            format: "title CONTAINS[cd] %@ OR content CONTAINS[cd] %@", 
+            searchQuery, searchQuery
+        )
         
         // 按更新时间降序排列
         fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
@@ -260,11 +243,6 @@ class SearchViewModel: ObservableObject {
                 if !tag.wrappedName.isEmpty && !suggestions.contains(tag.wrappedName) {
                     suggestions.append("#" + tag.wrappedName)
                 }
-            }
-            
-            // 如果有内容匹配，添加"全文搜索"建议
-            if !suggestions.isEmpty && searchMode != .fullText {
-                suggestions.append("全文搜索: \(searchQuery)")
             }
             
             searchSuggestions = suggestions

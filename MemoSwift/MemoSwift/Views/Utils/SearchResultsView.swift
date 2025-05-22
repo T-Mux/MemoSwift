@@ -37,17 +37,6 @@ struct SearchResultsView: View {
                         Text("未找到结果")
                             .font(.headline)
                             .foregroundStyle(.secondary)
-                        
-                        if searchViewModel.searchMode == .quick {
-                            Button(action: {
-                                searchViewModel.searchMode = .fullText
-                                searchViewModel.performSearch()
-                            }) {
-                                Text("尝试全文搜索")
-                                    .font(.subheadline)
-                                    .foregroundColor(.blue)
-                            }
-                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemBackground))

@@ -82,11 +82,7 @@ struct SearchView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(searchViewModel.searchSuggestions, id: \.self) { suggestion in
                             Button(action: {
-                                if suggestion.hasPrefix("全文搜索: ") {
-                                    // 切换到全文搜索
-                                    searchViewModel.searchMode = .fullText
-                                    searchViewModel.performSearch()
-                                } else if suggestion.hasPrefix("#") {
+                                if suggestion.hasPrefix("#") {
                                     // 标签搜索
                                     let tagName = String(suggestion.dropFirst())
                                     searchViewModel.searchQuery = tagName
@@ -99,8 +95,7 @@ struct SearchView: View {
                                 }
                             }) {
                                 HStack {
-                                    SwiftUI.Image(systemName: suggestion.hasPrefix("#") ? "tag" : 
-                                                 (suggestion.hasPrefix("全文搜索: ") ? "doc.text.magnifyingglass" : "magnifyingglass"))
+                                    SwiftUI.Image(systemName: suggestion.hasPrefix("#") ? "tag" : "doc.text.magnifyingglass")
                                         .foregroundColor(.gray)
                                     
                                     Text(suggestion)
@@ -142,14 +137,6 @@ struct SearchView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button(action: {
-                            searchViewModel.searchMode = .quick
-                            searchViewModel.performSearch()
-                        }) {
-                            Label("快速搜索", systemImage: "magnifyingglass")
-                                .foregroundColor(searchViewModel.searchMode == .quick ? .blue : .primary)
-                        }
-                        
                         Button(action: {
                             searchViewModel.searchMode = .fullText
                             searchViewModel.performSearch()
