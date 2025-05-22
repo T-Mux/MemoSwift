@@ -16,6 +16,7 @@ struct ContentView: View {
     @StateObject private var noteViewModel: NoteViewModel
     @StateObject private var searchViewModel = SearchViewModel(viewContext: PersistenceController.shared.container.viewContext)
     @StateObject private var trashViewModel: TrashViewModel
+    @EnvironmentObject private var reminderViewModel: ReminderViewModel
     
     @FetchRequest(
         fetchRequest: Folder.allFoldersFetchRequest(),
@@ -57,6 +58,12 @@ struct ContentView: View {
                         
                         // 添加搜索通知监听
                         setupSearchNotificationObserver()
+                        
+                        // 添加打开笔记的通知监听
+                        setupOpenNoteNotificationObserver()
+                        
+                        // 添加处理提醒触发的通知监听
+                        setupReminderTriggeredObserver()
                     }
             }
         }
@@ -83,6 +90,65 @@ struct ContentView: View {
             queue: .main
         ) { _ in
             showSearchSheet = true
+        }
+    }
+    
+    // 设置打开笔记的通知监听器
+    private func setupOpenNoteNotificationObserver() {
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("OpenNoteFromNotification"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let userInfo = notification.userInfo,
+                  let noteId = userInfo["noteId"] as? UUID else {
+                return
+            }
+            
+            openNoteById(noteId)
+        }
+    }
+    
+    // 设置处理提醒触发的通知监听器
+    private func setupReminderTriggeredObserver() {
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("HandleReminderTriggered"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let userInfo = notification.userInfo,
+                  let reminderId = userInfo["reminderId"] as? UUID else {
+                return
+            }
+            
+            // 处理重复提醒
+            reminderViewModel.handleReminderTriggered(reminderId: reminderId)
+        }
+    }
+    
+    // 根据ID打开笔记
+    private func openNoteById(_ noteId: UUID) {
+        let fetchRequest: NSFetchRequest<Note> = Note.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "id == %@ AND isInTrash == NO", noteId as CVarArg)
+        
+        do {
+            let results = try viewContext.fetch(fetchRequest)
+            if let note = results.first {
+                // 设置笔记所属的文件夹为当前文件夹
+                folderViewModel.selectedFolder = note.folder
+                
+                // 设置选中的笔记
+                DispatchQueue.main.async {
+                    noteViewModel.setSelectedNote(note)
+                    
+                    // 确保显示笔记详情
+                    withAnimation(.navigationPush) {
+                        columnVisibility = .detailOnly
+                    }
+                }
+            }
+        } catch {
+            print("根据ID查找笔记失败: \(error)")
         }
     }
     
@@ -198,69 +264,55 @@ struct ContentView: View {
                             withAnimation(.navigationPop) {
                                 folderViewModel.selectedFolder = nil
                                 // 在iPhone上显示文件夹列表列
-                                columnVisibility = .all
+                                columnVisibility = .doubleColumn
                             }
                         }
                     )
-                    .environment(\.managedObjectContext, viewContext)
                 } else {
-                    EmptyNoteSelectionView()
+                    // 当没有选中文件夹时显示提示
+                    VStack {
+                        Spacer()
+                        Text("请选择一个文件夹")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
                 }
             }
-            .animation(.navigationPush, value: folderViewModel.selectedFolder != nil)
         } detail: {
             // Third column: Note editor
             Group {
-                if let selectedNote = noteViewModel.selectedNote {
-                    // 简化视图结构，移除所有可能引起问题的修饰符
+                if let note = noteViewModel.selectedNote {
                     NoteEditorView(
-                        note: selectedNote,
+                        note: note,
                         noteViewModel: noteViewModel,
                         onBack: {
                             // 返回笔记列表
                             withAnimation(.navigationPop) {
                                 noteViewModel.selectedNote = nil
-                                // 确保正确回到列表视图
-                                if folderViewModel.selectedFolder != nil {
-                                    columnVisibility = .doubleColumn
-                                } else {
-                                    columnVisibility = .automatic
-                                }
+                                // 在iPhone上显示笔记列表
+                                columnVisibility = .doubleColumn
                             }
                         }
                     )
+                    .environmentObject(reminderViewModel)
                 } else {
-                    // 显示空视图
-                    Color.clear
+                    // 当没有选中笔记时显示提示
+                    VStack {
+                        Spacer()
+                        Text("请选择一个笔记")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
                 }
             }
-            .animation(.navigationPush, value: noteViewModel.selectedNote != nil)
         }
         .navigationSplitViewStyle(.balanced)
-        .onChange(of: trashViewModel.trashUpdated) { _, _ in
-            // 刷新回收站状态
-            viewContext.refreshAllObjects()
-        }
     }
 }
 
-struct EmptyNoteSelectionView: View {
-    var body: some View {
-        VStack {
-            SwiftUI.Image(systemName: "folder.badge.questionmark")
-                .imageScale(.large)
-                .font(.system(size: 50))
-                .foregroundColor(.blue)
-                .padding()
-            
-            Text("请选择一个文件夹")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
-    }
-}
+// ContentErrorView被移除，使用独立的ErrorView.swift文件中的ErrorView
 
 #Preview {
     ContentView()

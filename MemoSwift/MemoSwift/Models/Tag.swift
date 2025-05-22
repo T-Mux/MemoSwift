@@ -9,6 +9,11 @@ public class Tag: NSManagedObject, Identifiable {
     @NSManaged public var createdAt: Date?
     @NSManaged public var notes: NSSet?
     
+    // 获取ID（防止空值）
+    public var wrappedID: UUID {
+        id ?? UUID()
+    }
+    
     // 获取标签名（防止空值）
     public var wrappedName: String {
         name

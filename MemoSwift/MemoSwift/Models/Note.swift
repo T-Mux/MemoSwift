@@ -21,6 +21,7 @@ public class Note: NSManagedObject, Identifiable {
     @NSManaged public var folder: Folder?
     @NSManaged public var images: NSSet?
     @NSManaged public var tags: NSSet?
+    @NSManaged public var reminders: NSSet?
     
     // 获取标题（防止空值）
     public var wrappedTitle: String {
@@ -58,12 +59,37 @@ public class Note: NSManagedObject, Identifiable {
         }
     }
     
+    // 获取提醒数组
+    public var remindersArray: [Reminder] {
+        let set = reminders ?? []
+        return set.compactMap { $0 as? Reminder }.sorted {
+            ($0.reminderDate ?? Date()) < ($1.reminderDate ?? Date())
+        }
+    }
+    
+    // 获取活动提醒数组
+    public var activeRemindersArray: [Reminder] {
+        return remindersArray.filter { $0.isActive }
+    }
+    
     // 格式化日期显示
     public var formattedDate: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: updatedAt ?? Date())
+    }
+    
+    // 检查是否有活动提醒
+    public var hasActiveReminders: Bool {
+        return activeRemindersArray.count > 0
+    }
+    
+    // 获取最近的提醒
+    public var nextReminder: Reminder? {
+        let now = Date()
+        let activeReminders = activeRemindersArray.filter { $0.reminderDate != nil && $0.reminderDate! >= now }
+        return activeReminders.first
     }
 }
 
@@ -97,6 +123,14 @@ extension Note {
         return request
     }
     
+    // 获取有活动提醒的笔记
+    static func fetchNotesWithActiveReminders() -> NSFetchRequest<Note> {
+        let request: NSFetchRequest<Note> = Note.fetchRequest()
+        request.predicate = NSPredicate(format: "isInTrash == NO AND ANY reminders.isActive == YES")
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
+        return request
+    }
+    
     // 添加图片到笔记
     func addImage(_ image: Image) {
         let images = self.images?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
@@ -121,5 +155,19 @@ extension Note {
     // 检查是否有特定标签
     func hasTag(_ tag: Tag) -> Bool {
         return tagsArray.contains(where: { $0.id == tag.id })
+    }
+    
+    // 添加提醒到笔记
+    func addReminder(_ reminder: Reminder) {
+        let reminders = self.reminders?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
+        reminders.add(reminder)
+        self.reminders = reminders
+    }
+    
+    // 移除特定提醒
+    func removeReminder(_ reminder: Reminder) {
+        let reminders = self.reminders?.mutableCopy() as? NSMutableSet ?? NSMutableSet()
+        reminders.remove(reminder)
+        self.reminders = reminders
     }
 } 

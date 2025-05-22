@@ -239,7 +239,7 @@ class NoteViewModel: ObservableObject {
     }
     
     // 保存上下文
-    private func saveContext() {
+    func saveContext() {
         do {
             if viewContext.hasChanges {
                 try viewContext.save()

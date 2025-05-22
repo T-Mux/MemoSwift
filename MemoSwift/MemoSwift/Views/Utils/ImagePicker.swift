@@ -2,12 +2,6 @@ import SwiftUI
 import UIKit
 import PhotosUI
 
-// 图片来源选择
-enum PhotoSource {
-    case camera
-    case photoLibrary
-}
-
 // 图片选择器组件
 struct PhotoPicker: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?

@@ -9,28 +9,43 @@ import SwiftUI
 import CoreData
 import BackgroundTasks
 import CloudKit
+import UserNotifications
 
 @main
 struct MemoSwiftApp: App {
     let persistenceController = PersistenceController.shared
     @State private var showError = false
     @State private var errorMessage = ""
+    @StateObject private var reminderViewModel: ReminderViewModel
     
     // 定义Info.plist内容，这将与自动生成的Info.plist合并
     @available(iOS 14.0, macOS 11.0, *)
     static var infoPlist: [String: Any] = [
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": ["remote-notification", "processing"],
         "NSCameraUsageDescription": "需要使用相机来拍摄图片进行OCR文字识别",
-        "NSPhotoLibraryUsageDescription": "需要访问照片库选择图片进行OCR文字识别"
+        "NSPhotoLibraryUsageDescription": "需要访问照片库选择图片进行OCR文字识别",
+        "BGTaskSchedulerPermittedIdentifiers": [
+            "com.yourdomain.MemoSwift.icloudSync",
+            "com.yourdomain.MemoSwift.reminderCheck"
+        ]
     ]
     
     init() {
+        // 初始化提醒视图模型
+        let reminderVM = ReminderViewModel(viewContext: PersistenceController.shared.container.viewContext)
+        _reminderViewModel = StateObject(wrappedValue: reminderVM)
+        
         // 设置全局错误处理
         setupGlobalErrorHandling()
+        
+        // 注册后台任务
         registerBackgroundTasks()
         
         // 检查iCloud账户状态
         checkCloudKitAvailability()
+        
+        // 设置通知代理
+        setupNotificationDelegate()
         
         // 在App初始化时全局设置Alert按钮的颜色
         UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor = .systemBlue
@@ -41,6 +56,7 @@ struct MemoSwiftApp: App {
             ZStack {
                 ContentView()
                     .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                    .environmentObject(reminderViewModel)
                     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AppError"))) { notification in
                         if let error = notification.object as? Error {
                             showError = true
@@ -53,7 +69,16 @@ struct MemoSwiftApp: App {
                         .zIndex(1)
                 }
             }
+            .onAppear {
+                // 应用启动时加载并安排提醒
+                reminderViewModel.loadAndScheduleAllActiveReminders()
+            }
         }
+    }
+    
+    // 设置通知代理
+    private func setupNotificationDelegate() {
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
     
     // 设置全局错误处理
@@ -80,6 +105,11 @@ struct MemoSwiftApp: App {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.yourdomain.MemoSwift.icloudSync", using: nil) { task in
             self.handleCloudKitSync(task: task as! BGProcessingTask)
         }
+        
+        // 注册提醒检查的后台任务
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.yourdomain.MemoSwift.reminderCheck", using: nil) { task in
+            self.handleReminderCheck(task: task as! BGProcessingTask)
+        }
     }
     
     private func handleCloudKitSync(task: BGProcessingTask) {
@@ -101,6 +131,27 @@ struct MemoSwiftApp: App {
         syncOperation()
     }
     
+    // 处理提醒检查后台任务
+    private func handleReminderCheck(task: BGProcessingTask) {
+        // 安排下一次后台任务
+        scheduleReminderCheck()
+        
+        // 执行提醒检查
+        let checkOperation = {
+            // 重新加载和安排所有活动提醒
+            self.reminderViewModel.loadAndScheduleAllActiveReminders()
+            task.setTaskCompleted(success: true)
+        }
+        
+        // 设置过期处理程序
+        task.expirationHandler = {
+            // 如需要，清理任务
+        }
+        
+        // 开始检查操作
+        checkOperation()
+    }
+    
     private func scheduleBackgroundSync() {
         let request = BGProcessingTaskRequest(identifier: "com.yourdomain.MemoSwift.icloudSync")
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15分钟
@@ -109,7 +160,19 @@ struct MemoSwiftApp: App {
         do {
             try BGTaskScheduler.shared.submit(request)
         } catch {
-            print("安排后台任务失败: \(error)")
+            print("安排后台同步任务失败: \(error)")
+        }
+    }
+    
+    // 安排提醒检查后台任务
+    private func scheduleReminderCheck() {
+        let request = BGProcessingTaskRequest(identifier: "com.yourdomain.MemoSwift.reminderCheck")
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60) // 1小时
+        
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            print("安排后台提醒检查任务失败: \(error)")
         }
     }
     
@@ -213,5 +276,45 @@ struct ErrorOverlayView: View {
             .cornerRadius(15)
             .padding(30)
         }
+    }
+}
+
+// 添加通知代理类
+class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationDelegate()
+    
+    // 当应用在前台时收到通知
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // 允许通知在前台显示
+        completionHandler([.banner, .list, .sound, .badge])
+    }
+    
+    // 用户点击通知时的处理
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+        
+        // 提取笔记ID和提醒ID
+        if let noteIdString = userInfo["noteId"] as? String,
+           let noteId = UUID(uuidString: noteIdString) {
+            // 发送通知以打开特定笔记
+            NotificationCenter.default.post(
+                name: NSNotification.Name("OpenNoteFromNotification"),
+                object: nil,
+                userInfo: ["noteId": noteId]
+            )
+            
+            // 如果是重复提醒，需要设置下一次提醒
+            if let reminderIdString = userInfo["reminderId"] as? String,
+               let reminderId = UUID(uuidString: reminderIdString) {
+                // 发送通知以处理提醒
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("HandleReminderTriggered"),
+                    object: nil,
+                    userInfo: ["reminderId": reminderId]
+                )
+            }
+        }
+        
+        completionHandler()
     }
 }

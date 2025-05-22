@@ -2,7 +2,7 @@ import Foundation
 import CoreData
 
 @objc(Image)
-public class Image: NSManagedObject {
+public class Image: NSManagedObject, Identifiable {
     @NSManaged public var id: UUID?
     @NSManaged public var data: Data?
     @NSManaged public var createdAt: Date?

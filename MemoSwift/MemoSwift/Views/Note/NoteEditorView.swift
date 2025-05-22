@@ -12,6 +12,7 @@ import Vision
 struct NoteEditorView: View {
     let note: Note
     @ObservedObject var noteViewModel: NoteViewModel
+    @EnvironmentObject var reminderViewModel: ReminderViewModel
     var onBack: () -> Void  // 返回回调
     
     @State private var title: String
@@ -30,6 +31,7 @@ struct NoteEditorView: View {
     @State private var availableTags: [Tag] = []
     @State private var selectedTags: [Tag] = []
     @State private var debounceTimer: Timer?
+    @State private var showingReminderList = false
     
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
@@ -64,9 +66,23 @@ struct NoteEditorView: View {
             Divider()
             imagesSection
             tagManagementSection
+            reminderSection
             richTextEditorSection
         }
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showingImagePicker) {
+            PhotoPicker(
+                selectedImage: $selectedImage,
+                sourceType: imageSource == .camera ? .camera : .photoLibrary,
+                onImagePicked: { _ in }
+            )
+            .onDisappear {
+                if let image = selectedImage, let imageData = image.jpegData(compressionQuality: 0.8) {
+                    noteViewModel.addImage(to: note, imageData: imageData)
+                }
+                selectedImage = nil
+            }
+        }
         .onDisappear {
             debounceTimer?.invalidate()
             saveChanges()
@@ -81,7 +97,9 @@ struct NoteEditorView: View {
                 queue: .main
             ) { [self] notification in
                 if let userInfo = notification.userInfo,
-                   let source = userInfo["source"] as? ImageSource {
+                   let sourceRaw = userInfo["source"] as? String {
+                    // 根据字符串确定图片来源
+                    let source: PhotoSource = (sourceRaw == "camera") ? .camera : .photoLibrary
                     handleImageRequest(source: source)
                 }
             }
@@ -89,6 +107,10 @@ struct NoteEditorView: View {
         }
         .sheet(isPresented: $showingTagManager) {
             tagManagerSheet
+        }
+        .sheet(isPresented: $showingReminderList) {
+            ReminderListView(reminderViewModel: reminderViewModel, note: note)
+                .presentationDetents([.medium, .large])
         }
         .onChange(of: showingTagManager) { _, newValue in
             if !newValue {
@@ -102,6 +124,10 @@ struct NoteEditorView: View {
                 // 打开标签管理器时，同样确保富文本编辑器失去焦点
                 focusTextEditor = false
             }
+        }
+        .onReceive(reminderViewModel.$reminderUpdated) { _ in
+            // 提醒更新时刷新视图
+            viewContext.refresh(note, mergeChanges: true)
         }
     }
     
@@ -138,6 +164,14 @@ struct NoteEditorView: View {
                 Spacer()
                 HStack(spacing: 16) {
                     Button(action: {
+                        showingImageOptions = true
+                    }) {
+                        SwiftUI.Image(systemName: "photo")
+                            .font(.body)
+                            .foregroundColor(.blue)
+                    }
+                    
+                    Button(action: {
                         NotificationCenter.default.post(
                             name: NSNotification.Name("RichTextEditorUndo"),
                             object: nil
@@ -165,28 +199,89 @@ struct NoteEditorView: View {
         }
         .padding(.vertical, 8)
         .background(Color(.systemBackground))
+        .actionSheet(isPresented: $showingImageOptions) {
+            ActionSheet(
+                title: Text("添加图片"),
+                buttons: [
+                    .default(Text("相机")) { handleImageRequest(source: .camera) },
+                    .default(Text("照片库")) { handleImageRequest(source: .photoLibrary) },
+                    .cancel()
+                ]
+            )
+        }
     }
     
     // 标题输入框部分
     private var titleField: some View {
-        TextField("标题", text: $title)
-            .font(.title2)
-            .fontWeight(.bold)
-            .padding()
-            .background(Color(.systemBackground))
-            .focused($isTitleFocused)
-            .onTapGesture {
-                isTitleFocused = true
-                focusTextEditor = false
+        HStack {
+            TextField("标题", text: $title)
+                .font(.title2)
+                .fontWeight(.bold)
+                .focused($isTitleFocused)
+                .onTapGesture {
+                    isTitleFocused = true
+                    focusTextEditor = false
+                }
+                .onChange(of: title) { _, _ in
+                    debounceSave()
+                }
+                .submitLabel(.done)
+                .onSubmit {
+                    isTitleFocused = false
+                    focusTextEditor = true
+                }
+            
+            // 显示提醒状态
+            if note.hasActiveReminders {
+                Button(action: {
+                    showingReminderList = true
+                }) {
+                    ReminderIndicator(note: note)
+                }
             }
-            .onChange(of: title) { _, _ in
-                debounceSave()
+        }
+        .padding()
+        .background(Color(.systemBackground))
+    }
+    
+    // 添加提醒部分
+    private var reminderSection: some View {
+        HStack {
+            Button(action: {
+                showingReminderList = true
+            }) {
+                HStack {
+                    SwiftUI.Image(systemName: "bell")
+                        .foregroundColor(.blue)
+                        .font(.system(size: 18))
+                    
+                    Text("提醒")
+                        .foregroundColor(.blue)
+                        .font(.system(size: 16))
+                    
+                    Spacer()
+                    
+                    if note.hasActiveReminders {
+                        Text("\(note.activeRemindersArray.count)")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.blue)
+                            .clipShape(Capsule())
+                    }
+                    
+                    SwiftUI.Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .submitLabel(.done)
-            .onSubmit {
-                isTitleFocused = false
-                focusTextEditor = true
-            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .background(Color(.systemBackground))
+        .padding(.vertical, 4)
     }
     
     // 图片显示部分
@@ -195,413 +290,301 @@ struct NoteEditorView: View {
             if !note.imagesArray.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 12) {
-                        ForEach(note.imagesArray, id: \.wrappedID) { imageEntity in
+                        ForEach(note.imagesArray) { imageEntity in
                             NoteImageView(imageData: imageEntity.wrappedData)
                                 .frame(height: 120)
-                                .frame(width: 150)
+                                .cornerRadius(8)
                         }
                     }
                     .padding(.horizontal)
+                    .padding(.vertical, 8)
                 }
-                .padding(.vertical, 8)
-                Divider()
+                .background(Color(.systemBackground))
             }
         }
     }
     
-    // 标签管理区域部分
+    // 标签管理部分
     private var tagManagementSection: some View {
+        // 标签管理部分
         HStack {
-            Text("标签")
-                .font(.headline)
-            ScrollView(.horizontal, showsIndicators: false) {
+            // 如果有选中的标签，则显示标签
+            if !selectedTags.isEmpty {
+                TagScrollView(
+                    tags: selectedTags, 
+                    onRemove: removeTag, 
+                    onAddMore: { showingTagManager = true }
+                )
+            } else {
+                // 如果没有标签，显示"添加标签"按钮
+                AddTagButton(action: { showingTagManager = true })
+            }
+        }
+        .background(Color(.systemBackground))
+        .padding(.vertical, 4)
+    }
+    
+    // 标签滚动视图组件
+    private struct TagScrollView: View {
+        let tags: [Tag]
+        let onRemove: (Tag) -> Void
+        let onAddMore: () -> Void
+        
+        var body: some View {
+            HStack {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(tags) { tag in
+                            TagView(tag: tag, onRemove: onRemove)
+                        }
+                    }
+                    .padding(.leading, 16)
+                    .padding(.vertical, 8)
+                }
+                
+                // 添加或管理标签按钮
+                Button(action: onAddMore) {
+                    SwiftUI.Image(systemName: "plus.circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(.blue)
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+    
+    // 单个标签视图
+    private struct TagView: View {
+        let tag: Tag
+        let onRemove: (Tag) -> Void
+        
+        var body: some View {
+            HStack(spacing: 6) {
+                Text(tag.wrappedName)
+                    .font(.system(size: 15))
+                    .padding(.leading, 10)
+                    .padding(.vertical, 6)
+                
+                Button(action: { onRemove(tag) }) {
+                    SwiftUI.Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.trailing, 8)
+                .padding(.vertical, 6)
+            }
+            .background(Color.blue.opacity(0.1))
+            .foregroundColor(.blue)
+            .cornerRadius(14)
+        }
+    }
+    
+    // 添加标签按钮
+    private struct AddTagButton: View {
+        let action: () -> Void
+        
+        var body: some View {
+            Button(action: action) {
                 HStack {
-                    ForEach(selectedTags, id: \.id) { tag in
-                        tagChip(for: tag)
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.8).combined(with: .opacity),
-                                removal: .scale(scale: 0.6).combined(with: .opacity)
-                            ))
+                    SwiftUI.Image(systemName: "tag")
+                        .font(.system(size: 18))
+                        .foregroundColor(.blue)
+                    
+                    Text("添加标签")
+                        .font(.system(size: 16))
+                        .foregroundColor(.blue)
+                    
+                    Spacer()
+                    
+                    SwiftUI.Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+    
+    // 富文本编辑器部分
+    private var richTextEditorSection: some View {
+        Group {
+            RichTextEditor(
+                attributedText: $attributedContent,
+                focus: $focusTextEditor,
+                canUndo: $canUndo,
+                canRedo: $canRedo,
+                onCommit: { newContent in
+                    attributedContent = newContent
+                    debounceSave()
+                }
+            )
+            .onChange(of: attributedContent) { _, _ in
+                debounceSave()
+            }
+        }
+    }
+    
+    // 标签管理弹出视图
+    private var tagManagerSheet: some View {
+        NavigationView {
+            VStack {
+                // 添加新标签的部分
+                HStack {
+                    TextField("新标签名称", text: $newTagName)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    
+                    Button(action: {
+                        addNewTag()
+                    }) {
+                        Text("添加")
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(newTagName.isEmpty ? Color.gray : Color.blue)
+                            .cornerRadius(8)
+                    }
+                    .disabled(newTagName.isEmpty)
+                }
+                .padding()
+                
+                Divider()
+                
+                // 显示可选标签的列表
+                List {
+                    ForEach(availableTags) { tag in
+                        Button(action: {
+                            toggleTag(tag)
+                        }) {
+                            HStack {
+                                Text(tag.wrappedName)
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                if selectedTags.contains(where: { $0.id == tag.id }) {
+                                    SwiftUI.Image(systemName: "checkmark")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+                    }
+                    .onDelete { indexSet in
+                        deleteTag(at: indexSet)
                     }
                 }
-                .animation(.spring(response: 0.3), value: selectedTags.count)
+                .listStyle(PlainListStyle())
             }
-            Button(action: {
-                showingTagManager = true
-                loadNoteTags()
-            }) {
-                SwiftUI.Image(systemName: "plus.circle")
+            .navigationTitle("管理标签")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("完成") {
+                        showingTagManager = false
+                    }
+                }
             }
         }
-        .padding()
     }
     
-    // 处理富文本编辑器的图片请求
-    private func handleImageRequest(source: ImageSource) {
-        // 确保我们使用的是正确的枚举类型
-        switch source {
-        case .camera:
-            imageSource = .camera
-            showingImagePicker = true
-        case .photoLibrary:
-            imageSource = .photoLibrary
-            showingImagePicker = true
-        case .ocr:
-            showingOCRView = true
-        }
-    }
-    
-    // 处理OCR结果
-    private func handleOCRResult(_ result: OCRResult) {
-        // 保存图片
-        if let imageData = result.image.jpegData(compressionQuality: 0.7) {
-            noteViewModel.addImage(to: note, imageData: imageData)
-        }
-        
-        // 将识别出的文本添加到当前笔记内容中
-        if !result.text.isEmpty {
-            // 创建一个新的可变属性字符串
-            let currentText = attributedContent.string
-            let newText = currentText.isEmpty ? result.text : "\n\n\(result.text)"
-            
-            let mutableAttributedString = NSMutableAttributedString(attributedString: attributedContent)
-            let textToAdd = NSAttributedString(string: newText)
-            mutableAttributedString.append(textToAdd)
-            
-            attributedContent = mutableAttributedString
-            debounceSave()
-        }
-    }
-    
-    // 延迟保存 - 使用计时器防抖
-    private func debounceSave() {
-        // 取消已有的计时器
-        debounceTimer?.invalidate()
-        
-        // 创建新的计时器，延迟0.5秒后保存（缩短延迟时间提高响应性）
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-            saveChanges()
-        }
-    }
-    
-    // 保存所有更改
+    // 保存笔记变更
     private func saveChanges() {
-        // 先刷新笔记确保使用最新数据
-        viewContext.refresh(note, mergeChanges: true)
-        
-        // 更新笔记，使用富文本内容
+        // 将当前富文本内容保存回笔记
         noteViewModel.updateNoteWithRichContent(
             note: note,
             title: title,
             attributedContent: attributedContent
         )
-        
-        // 保存完毕后不自动聚焦富文本编辑器
-        focusTextEditor = false
+    }
+    
+    // 延迟保存（防止频繁保存）
+    private func debounceSave() {
+        debounceTimer?.invalidate()
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+            saveChanges()
+        }
+    }
+    
+    // 处理图片请求
+    private func handleImageRequest(source: PhotoSource) {
+        imageSource = source
+        showingImagePicker = true
     }
     
     // 加载笔记的标签
     private func loadNoteTags() {
+        // 获取已选标签
         selectedTags = noteViewModel.fetchTagsForNote(note: note)
-        availableTags = noteViewModel.fetchAllTags().filter { tag in
-            !selectedTags.contains(where: { $0.id == tag.id })
-        }
-    }
-    
-    // 单独提取标签chip为函数，简化主视图体，帮助编译器类型检查
-    private func tagChip(for tag: Tag) -> some View {
-        HStack {
-            Text(tag.wrappedName)
-                .font(.caption)
-            Button(action: {
-                // 添加动画效果
-                withAnimation(.spring(response: 0.3)) {
-                    noteViewModel.removeTagFromNote(note: note, tag: tag)
-                    loadNoteTags()
-                }
-            }) {
-                SwiftUI.Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(Color.red)
-            }
-        }
-        .padding(4)
-        .background(Color.gray.opacity(0.2))
-        .cornerRadius(8)
-    }
-
-    // 富文本编辑器部分提取为独立属性，简化主视图体，帮助编译器类型检查
-    private var richTextEditorSection: some View {
-        // 首先创建一个不会自动获取焦点的编辑器
-        let editor = RichTextEditor(
-            attributedText: $attributedContent,
-            focus: $focusTextEditor,
-            canUndo: $canUndo,
-            canRedo: $canRedo,
-            onCommit: { updatedText in
-                self.attributedContent = updatedText
-                debounceSave()
-            }
-        )
-        .padding([.horizontal, .top], 8)
-        .background(Color(.systemBackground))
         
-        // 仅在完全非标签操作上下文中，才考虑自动聚焦
-        return editor.onAppear {
-            // 首次加载时如果有内容，且不是在标签操作后，才自动聚焦
-            if !note.wrappedTitle.isEmpty && 
-               !note.wrappedContent.isEmpty && 
-               !showingTagManager &&
-               !UserDefaults.standard.bool(forKey: "recentTagOperation") {
-                
-                // 设置一个较长的延迟，确保只有在确实需要的情况下才聚焦
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    // 再次检查标记，以防在延迟期间进行了标签操作
-                    if !UserDefaults.standard.bool(forKey: "recentTagOperation") {
-                        isTitleFocused = false
-                        focusTextEditor = true
-                    }
-                }
-            } else {
-                // 重置标记，但不聚焦富文本编辑器
-                UserDefaults.standard.removeObject(forKey: "recentTagOperation")
-            }
-        }
-    }
-
-    private var tagManagerSheet: some View {
-        TagListContainer(
-            availableTags: availableTags,
-            selectedTags: selectedTags,
-            newTagName: $newTagName,
-            onAddTag: { tagName in
-                // 添加动画效果
-                withAnimation(.spring(response: 0.3)) {
-                    _ = noteViewModel.addTagToNote(note: note, tagName: tagName)
-                    loadNoteTags()
-                }
-                // 防止富文本功能栏自动弹出
-                withAnimation(.none) {
-                    focusTextEditor = false
-                }
-            },
-            onRemoveTag: { tag in
-                // 添加动画效果
-                withAnimation(.spring(response: 0.3)) {
-                    noteViewModel.removeTagFromNote(note: note, tag: tag)
-                    loadNoteTags()
-                }
-                // 防止富文本功能栏自动弹出
-                withAnimation(.none) {
-                    focusTextEditor = false
-                }
-            },
-            onClose: {
-                showingTagManager = false
-                // 关闭标签管理器后，显式设置为不聚焦
-                DispatchQueue.main.async {
-                    focusTextEditor = false
-                    isTitleFocused = false
-                }
-            }
-        )
-    }
-}
-
-// TagListContainer to separate tag list from binding issues
-struct TagListContainer: View {
-    var availableTags: [Tag]
-    var selectedTags: [Tag]
-    @Binding var newTagName: String
-    let onAddTag: (String) -> Void
-    let onRemoveTag: (Tag) -> Void
-    let onClose: () -> Void
-    
-    // 防止自动弹出键盘的状态
-    @State private var shouldFocusTextField = false
-    @FocusState private var isTextFieldFocused: Bool
-    
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("标签管理")
-                    .font(.headline)
-                    .padding(.top)
-                
-                // 当前笔记的标签
-                if !selectedTags.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("当前标签")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(selectedTags, id: \.id) { tag in
-                                    selectedTagButton(for: tag)
-                                        .transition(.asymmetric(
-                                            insertion: .scale(scale: 0.9).combined(with: .opacity),
-                                            removal: .scale(scale: 0.8).combined(with: .opacity)
-                                        ))
-                                }
-                                .animation(.spring(response: 0.3), value: selectedTags.count)
-                            }
-                        }
-                        .frame(maxHeight: 150)
-                    }
-                    .padding(.bottom, 8)
-                }
-                
-                // 可用标签列表
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("可添加标签")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    if availableTags.isEmpty {
-                        Text("暂无可添加的标签")
-                            .foregroundColor(.secondary)
-                            .padding(.vertical, 8)
-                    } else {
-                        // 简化视图结构，拆分复杂表达式
-                        tagListSection
-                    }
-                }
-                
-                // 新建标签区域
-                addTagSection
-                
-                Spacer()
-            }
-            .padding()
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") {
-                        // 设置一个标记表示最近进行了标签操作
-                        UserDefaults.standard.set(true, forKey: "recentTagOperation")
-                        isTextFieldFocused = false
-                        // 先关闭键盘
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        // 延迟关闭以确保键盘先收起
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            onClose()
-                        }
-                    }
-                }
-            }
-            .onAppear {
-                // 确保不会自动弹出键盘
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    shouldFocusTextField = true
-                    isTextFieldFocused = false
-                }
-            }
-            .onDisappear {
-                // 视图消失时标记操作完成
-                UserDefaults.standard.set(true, forKey: "recentTagOperation")
-            }
-        }
+        // 获取所有可用标签
+        availableTags = noteViewModel.fetchAllTags()
     }
     
-    // 拆分出标签列表部分
-    private var tagListSection: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading) {
-                ForEach(availableTags, id: \.id) { tag in
-                    tagButton(for: tag)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .leading).combined(with: .opacity),
-                            removal: .move(edge: .trailing).combined(with: .opacity)
-                        ))
-                }
-                .animation(.spring(response: 0.3), value: availableTags.count)
-            }
-        }
-        .frame(maxHeight: 150)
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(8)
-    }
-    
-    // 进一步拆分单个标签按钮
-    private func tagButton(for tag: Tag) -> some View {
-        Button(action: {
-            onAddTag(tag.wrappedName)
-        }) {
-            HStack {
-                Text(tag.wrappedName)
-                    .foregroundColor(.primary)
-                Spacer()
-                SwiftUI.Image(systemName: "plus.circle")
-                    .foregroundColor(.green)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(Color(.systemBackground))
-            .contentShape(Rectangle())
-        }
-    }
-    
-    // 当前已选标签按钮
-    private func selectedTagButton(for tag: Tag) -> some View {
-        HStack {
-            Text(tag.wrappedName)
-                .foregroundColor(.primary)
-            Spacer()
-            Button(action: {
-                onRemoveTag(tag)
-            }) {
-                SwiftUI.Image(systemName: "xmark.circle")
-                    .foregroundColor(.red)
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(Color(.systemBackground))
-        .cornerRadius(8)
-    }
-    
-    // 拆分添加标签部分
-    private var addTagSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("新建标签")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                
-            HStack {
-                TextField("输入标签名称", text: $newTagName)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .focused($isTextFieldFocused)
-                    .onChange(of: shouldFocusTextField) { _, newValue in
-                        if newValue {
-                            // 显式设置为不聚焦，防止键盘自动弹出
-                            isTextFieldFocused = false
-                        }
-                    }
-                
-                Button(action: {
-                    addNewTag()
-                }) {
-                    SwiftUI.Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.blue)
-                        .font(.title2)
-                }
-                .disabled(newTagName.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
-    // 拆分添加标签的动作
+    // 添加新标签
     private func addNewTag() {
-        let trimmed = newTagName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !newTagName.isEmpty else { return }
         
-        // 设置一个标记表示最近进行了标签操作
-        UserDefaults.standard.set(true, forKey: "recentTagOperation")
-        // 先关闭键盘
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        // 添加标签到笔记
+        let newTag = noteViewModel.addTagToNote(note: note, tagName: newTagName)
         
-        onAddTag(trimmed)
+        // 更新本地标签列表
+        if !selectedTags.contains(where: { $0.id == newTag.id }) {
+            selectedTags.append(newTag)
+        }
+        
+        // 确保在可用标签列表中
+        if !availableTags.contains(where: { $0.id == newTag.id }) {
+            availableTags.append(newTag)
+        }
+        
+        // 清空输入框
         newTagName = ""
+    }
+    
+    // 切换标签选择状态
+    private func toggleTag(_ tag: Tag) {
+        if let index = selectedTags.firstIndex(where: { $0.id == tag.id }) {
+            // 如果标签已选中，则取消选择
+            selectedTags.remove(at: index)
+            noteViewModel.removeTagFromNote(note: note, tag: tag)
+        } else {
+            // 如果标签未选中，则选中它
+            selectedTags.append(tag)
+            note.addTag(tag)
+            noteViewModel.saveContext()
+        }
+    }
+    
+    // 删除标签
+    private func deleteTag(at indexSet: IndexSet) {
+        for index in indexSet {
+            let tagToDelete = availableTags[index]
+            
+            // 首先从已选标签中移除
+            if let selectedIndex = selectedTags.firstIndex(where: { $0.id == tagToDelete.id }) {
+                selectedTags.remove(at: selectedIndex)
+            }
+            
+            // 从笔记中移除标签
+            noteViewModel.removeTagFromNote(note: note, tag: tagToDelete)
+            
+            // 删除标签
+            noteViewModel.deleteTag(tagToDelete)
+            
+            // 从可用标签列表中移除
+            availableTags.remove(at: index)
+        }
+    }
+    
+    // 移除标签
+    private func removeTag(_ tag: Tag) {
+        if let index = selectedTags.firstIndex(where: { $0.id == tag.id }) {
+            selectedTags.remove(at: index)
+            noteViewModel.removeTagFromNote(note: note, tag: tag)
+        }
     }
 } 
