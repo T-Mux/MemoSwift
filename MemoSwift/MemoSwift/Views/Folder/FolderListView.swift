@@ -170,17 +170,6 @@ struct FolderListView: View {
                                 Label("新建笔记", systemImage: "note.text.badge.plus")
                             }
                         }
-                        
-                        Divider()
-                        
-                        Button(action: {
-                            NotificationCenter.default.post(
-                                name: Notification.Name("ShowSearchSheet"),
-                                object: nil
-                            )
-                        }) {
-                            Label("搜索笔记", systemImage: "magnifyingglass")
-                        }
                     } label: {
                         SwiftUI.Image(systemName: "plus")
                             .font(.title3)

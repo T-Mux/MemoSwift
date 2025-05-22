@@ -156,26 +156,6 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // First column: Folders and Tags
             VStack(spacing: 0) {
-                // 标题区域
-                HStack {
-                    Text("MemoSwift")
-                        .font(.title)
-                        .bold()
-                    
-                    Spacer()
-                    
-                    Button {
-                        showSearchSheet = true
-                    } label: {
-                        SwiftUI.Image(systemName: "magnifyingglass")
-                            .imageScale(.large)
-                    }
-                    .padding(.trailing, 8)
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-                
-                // 完全恢复原始Layout
                 // 文件夹列表
                 FolderListView(folderViewModel: folderViewModel)
                     .environmentObject(noteViewModel)
