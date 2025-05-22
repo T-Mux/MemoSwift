@@ -77,8 +77,10 @@ struct SearchResultsView: View {
                                 noteViewModel.selectedNote = note
                             }) {
                                 SearchResultRow(note: note, keyword: searchViewModel.searchQuery)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .padding(.vertical, 2)
                         }
                         
                         // 加载更多按钮
@@ -93,7 +95,7 @@ struct SearchResultsView: View {
                                         .foregroundColor(.blue)
                                     Spacer()
                                 }
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -111,7 +113,7 @@ struct SearchResultRow: View {
     let keyword: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             // 标题行
             HStack(alignment: .center, spacing: 12) {
                 // 笔记图标
@@ -122,8 +124,7 @@ struct SearchResultRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // 标题
                     Text(highlightedTitle)
-                        .font(.title3)
-                        .fontWeight(.bold)
+                        .font(.headline)
                         .lineLimit(1)
                     
                     // 文件夹位置
@@ -152,27 +153,28 @@ struct SearchResultRow: View {
                 Text(highlightedPreview)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
                     .padding(.leading, 32)
+                    .padding(.top, 2)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
     
     // 高亮标题中的关键词
     private var highlightedTitle: AttributedString {
-        highlightText(text: note.wrappedTitle, keyword: keyword)
+        highlightText(text: note.wrappedTitle, keyword: keyword, isTitle: true)
     }
     
     // 高亮内容预览中的关键词
     private var highlightedPreview: AttributedString {
         // 提取关键词上下文
         let previewText = extractPreviewWithKeyword(from: note.wrappedContent, keyword: keyword)
-        return highlightText(text: previewText, keyword: keyword)
+        return highlightText(text: previewText, keyword: keyword, isTitle: false)
     }
     
     // 高亮文本中的关键词
-    private func highlightText(text: String, keyword: String) -> AttributedString {
+    private func highlightText(text: String, keyword: String, isTitle: Bool) -> AttributedString {
         var attributedString = AttributedString(text)
         
         if !keyword.isEmpty {
@@ -183,9 +185,16 @@ struct SearchResultRow: View {
                     NSRange(range, in: text),
                     in: attributedString
                 ) {
-                    attributedString[attributedRange].foregroundColor = .blue
-                    attributedString[attributedRange].backgroundColor = Color.blue.opacity(0.1)
-                    attributedString[attributedRange].font = .boldSystemFont(ofSize: UIFont.systemFontSize)
+                    if isTitle {
+                        // 标题高亮样式
+                        attributedString[attributedRange].foregroundColor = .blue
+                        attributedString[attributedRange].font = .body.bold()
+                    } else {
+                        // 内容高亮样式
+                        attributedString[attributedRange].foregroundColor = .blue
+                        attributedString[attributedRange].backgroundColor = Color.blue.opacity(0.1)
+                        attributedString[attributedRange].font = .body.weight(.semibold)
+                    }
                 }
             }
         }

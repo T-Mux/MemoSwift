@@ -77,6 +77,52 @@ struct SearchView: View {
                 .padding(.bottom, 8)
                 .animation(.default, value: isEditing || showCancelButton)
                 
+                // 搜索建议
+                if !searchViewModel.searchSuggestions.isEmpty && searchViewModel.searchQuery.count >= 2 {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(searchViewModel.searchSuggestions, id: \.self) { suggestion in
+                            Button(action: {
+                                if suggestion.hasPrefix("全文搜索: ") {
+                                    // 切换到全文搜索
+                                    searchViewModel.searchMode = .fullText
+                                    searchViewModel.performSearch()
+                                } else if suggestion.hasPrefix("#") {
+                                    // 标签搜索
+                                    let tagName = String(suggestion.dropFirst())
+                                    searchViewModel.searchQuery = tagName
+                                    searchViewModel.searchMode = .tag
+                                    searchViewModel.performSearch()
+                                } else {
+                                    // 直接使用建议
+                                    searchViewModel.searchQuery = suggestion
+                                    searchViewModel.performSearch()
+                                }
+                            }) {
+                                HStack {
+                                    SwiftUI.Image(systemName: suggestion.hasPrefix("#") ? "tag" : 
+                                                 (suggestion.hasPrefix("全文搜索: ") ? "doc.text.magnifyingglass" : "magnifyingglass"))
+                                        .foregroundColor(.gray)
+                                    
+                                    Text(suggestion)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                }
+                                .padding(.horizontal)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            Divider()
+                                .padding(.leading)
+                        }
+                    }
+                    .background(Color(.systemBackground))
+                    .cornerRadius(10)
+                    .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 5)
+                    .padding(.horizontal)
+                }
+                
                 // 搜索结果视图
                 SearchResultsView(
                     searchViewModel: searchViewModel,

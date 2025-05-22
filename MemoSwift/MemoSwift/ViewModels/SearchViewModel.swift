@@ -23,6 +23,8 @@ class SearchViewModel: ObservableObject {
     @Published var isSearching: Bool = false
     // 是否有更多搜索结果
     @Published var hasMoreResults: Bool = false
+    // 搜索建议
+    @Published var searchSuggestions: [String] = []
     
     // 搜索模式
     enum SearchMode: String, CaseIterable, Identifiable {
@@ -71,8 +73,12 @@ class SearchViewModel: ObservableObject {
             searchResults = []
             isSearching = false
             hasMoreResults = false
+            searchSuggestions = []
             return
         }
+        
+        // 生成搜索建议
+        generateSearchSuggestions()
         
         // 取消之前的搜索任务
         searchTask?.cancel()
@@ -215,5 +221,56 @@ class SearchViewModel: ObservableObject {
         isSearching = false
         hasMoreResults = false
         maxResults = 50
+        searchSuggestions = []
+    }
+    
+    // 生成搜索建议
+    private func generateSearchSuggestions() {
+        guard searchQuery.count >= 2 else {
+            searchSuggestions = []
+            return
+        }
+        
+        // 获取最近的笔记标题和标签作为建议
+        var suggestions: [String] = []
+        
+        // 查找匹配的标题
+        let titleFetchRequest: NSFetchRequest<Note> = Note.fetchRequest()
+        titleFetchRequest.predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchQuery)
+        titleFetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
+        titleFetchRequest.fetchLimit = 5
+        
+        // 查找匹配的标签
+        let tagFetchRequest: NSFetchRequest<Tag> = Tag.fetchRequest()
+        tagFetchRequest.predicate = NSPredicate(format: "name CONTAINS[cd] %@", searchQuery)
+        tagFetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Tag.name, ascending: true)]
+        tagFetchRequest.fetchLimit = 3
+        
+        // 执行查询
+        do {
+            let matchingNotes = try viewContext.fetch(titleFetchRequest)
+            for note in matchingNotes {
+                if !note.wrappedTitle.isEmpty && !suggestions.contains(note.wrappedTitle) {
+                    suggestions.append(note.wrappedTitle)
+                }
+            }
+            
+            let matchingTags = try viewContext.fetch(tagFetchRequest)
+            for tag in matchingTags {
+                if !tag.wrappedName.isEmpty && !suggestions.contains(tag.wrappedName) {
+                    suggestions.append("#" + tag.wrappedName)
+                }
+            }
+            
+            // 如果有内容匹配，添加"全文搜索"建议
+            if !suggestions.isEmpty && searchMode != .fullText {
+                suggestions.append("全文搜索: \(searchQuery)")
+            }
+            
+            searchSuggestions = suggestions
+        } catch {
+            print("生成搜索建议时出错: \(error)")
+            searchSuggestions = []
+        }
     }
 } 
