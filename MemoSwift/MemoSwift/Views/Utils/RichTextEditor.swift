@@ -34,6 +34,11 @@ struct RichTextEditor: UIViewRepresentable {
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
         
+        // 确保撤销管理器正确配置
+        textView.allowsEditingTextAttributes = true
+        // UITextView已经有内置的undoManager，直接配置它
+        textView.undoManager?.levelsOfUndo = 20  // 设置撤销步数限制
+        
         // 确保保存对 textView 的引用
         context.coordinator.textView = textView
         
@@ -53,22 +58,27 @@ struct RichTextEditor: UIViewRepresentable {
     
     // 更新UITextView
     func updateUIView(_ textView: UITextView, context: Context) {
-        // 如果正在活跃编辑中，避免不必要的更新
-        if context.coordinator.isActivelyEditing {
-            return
-        }
+        // 检查是否是格式化操作引起的更新（如粗体、斜体等）
+        let timeSinceLastEdit = Date().timeIntervalSince(context.coordinator.lastEditTimestamp)
+        let isFormattingUpdate = context.coordinator.isActivelyEditing && timeSinceLastEdit < 0.2
         
-        // 避免更新时光标位置重置
-        let selectedRange = textView.selectedRange
-        
-        // 只有当内容真正变化时才进行更新，减少不必要的重绘
-        if !NSAttributedString.areEqual(textView.attributedText, attributedText) {
-            textView.attributedText = attributedText
+        // 只有在非活跃编辑状态或格式化更新时才进行内容更新
+        if !context.coordinator.isActivelyEditing || isFormattingUpdate {
+            // 避免更新时光标位置重置
+            let selectedRange = textView.selectedRange
             
-            // 恢复光标位置
-            if selectedRange.location < attributedText.length {
-                textView.selectedRange = selectedRange
+            // 只有当内容真正变化时才进行更新，减少不必要的重绘
+            if !NSAttributedString.areEqual(textView.attributedText, attributedText) {
+                print("RichTextEditor: updateUIView - 内容发生变化，进行更新")
+                textView.attributedText = attributedText
+                
+                // 恢复光标位置
+                if selectedRange.location < attributedText.length {
+                    textView.selectedRange = selectedRange
+                }
             }
+        } else {
+            print("RichTextEditor: updateUIView - 跳过内容更新（活跃编辑中）")
         }
         
         // 不在view update期间直接更新状态，使用Task以避免"在视图更新期间修改状态"警告
@@ -306,16 +316,14 @@ struct RichTextEditor: UIViewRepresentable {
             isActivelyEditing = true
             lastEditTimestamp = Date()
             
-            // 确保为文本变化注册撤销操作
-            if let undoManager = textView.undoManager {
-                undoManager.registerUndo(withTarget: textView) { (targetTextView) in
-                    // 撤销操作的闭包
-                    targetTextView.attributedText = self.parent.attributedText
-                }
-            }
+            print("RichTextEditor: 文本已改变，长度: \(textView.attributedText.length)")
+            
+            // 不要手动注册撤销操作 - UITextView已经内置了撤销支持
+            // 手动注册会干扰内置的撤销机制
             
             // 更新文本内容
             parent.attributedText = textView.attributedText
+            print("RichTextEditor: 调用 onCommit 回调")
             parent.onCommit(textView.attributedText)
             
             // 更新撤销重做状态
@@ -385,6 +393,9 @@ struct RichTextEditor: UIViewRepresentable {
             let selectedRange = textView.selectedRange
             
             if selectedRange.length > 0 {
+                // 保存当前状态用于撤销
+                let previousAttributedText = textView.attributedText.copy() as! NSAttributedString
+                
                 let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
                 
                 // 查看选中文本是否已经应用了粗体
@@ -405,6 +416,14 @@ struct RichTextEditor: UIViewRepresentable {
                         allBold = false
                         stop.pointee = true
                     }
+                }
+                
+                // 注册撤销操作
+                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                    coordinator.textView?.attributedText = previousAttributedText
+                    coordinator.textView?.selectedRange = selectedRange
+                    coordinator.parent.attributedText = previousAttributedText
+                    coordinator.parent.onCommit(previousAttributedText)
                 }
                 
                 // 根据当前状态切换粗体
@@ -441,8 +460,12 @@ struct RichTextEditor: UIViewRepresentable {
                 textView.attributedText = mutableAttributedString
                 textView.selectedRange = selectedRange
                 
-                // 更新绑定的文本
+                // 更新绑定的文本并触发保存
                 parent.attributedText = mutableAttributedString
+                parent.onCommit(mutableAttributedString)
+                
+                // 更新撤销重做状态
+                updateUndoRedoState()
             }
             
             // 确保文本视图保持焦点
@@ -455,6 +478,9 @@ struct RichTextEditor: UIViewRepresentable {
             let selectedRange = textView.selectedRange
             
             if selectedRange.length > 0 {
+                // 保存当前状态用于撤销
+                let previousAttributedText = textView.attributedText.copy() as! NSAttributedString
+                
                 let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
                 
                 // 查看选中文本是否已经应用了斜体
@@ -475,6 +501,14 @@ struct RichTextEditor: UIViewRepresentable {
                         allItalic = false
                         stop.pointee = true
                     }
+                }
+                
+                // 注册撤销操作
+                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                    coordinator.textView?.attributedText = previousAttributedText
+                    coordinator.textView?.selectedRange = selectedRange
+                    coordinator.parent.attributedText = previousAttributedText
+                    coordinator.parent.onCommit(previousAttributedText)
                 }
                 
                 // 根据当前状态切换斜体
@@ -511,8 +545,12 @@ struct RichTextEditor: UIViewRepresentable {
                 textView.attributedText = mutableAttributedString
                 textView.selectedRange = selectedRange
                 
-                // 更新绑定的文本
+                // 更新绑定的文本并触发保存
                 parent.attributedText = mutableAttributedString
+                parent.onCommit(mutableAttributedString)
+                
+                // 更新撤销重做状态
+                updateUndoRedoState()
             }
             
             // 确保文本视图保持焦点
@@ -759,7 +797,19 @@ struct RichTextEditor: UIViewRepresentable {
             let selectedRange = textView.selectedRange
             
             if selectedRange.length > 0 {
+                // 保存当前状态用于撤销
+                let previousAttributedText = textView.attributedText.copy() as! NSAttributedString
+                
                 let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
+                
+                // 注册撤销操作
+                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                    coordinator.textView?.attributedText = previousAttributedText
+                    coordinator.textView?.selectedRange = selectedRange
+                    coordinator.parent.attributedText = previousAttributedText
+                    coordinator.parent.onCommit(previousAttributedText)
+                }
+                
                 mutableAttributedString.enumerateAttribute(.font, in: selectedRange, options: []) { value, range, _ in
                     if let oldFont = value as? UIFont {
                         let newFont = oldFont.withSize(size)
@@ -774,8 +824,12 @@ struct RichTextEditor: UIViewRepresentable {
                 textView.attributedText = mutableAttributedString
                 textView.selectedRange = selectedRange
                 
-                // 更新绑定的文本
+                // 更新绑定的文本并触发保存
                 parent.attributedText = mutableAttributedString
+                parent.onCommit(mutableAttributedString)
+                
+                // 更新撤销重做状态
+                updateUndoRedoState()
             }
             
             // 确保文本视图保持焦点
@@ -953,16 +1007,38 @@ struct RichTextEditor: UIViewRepresentable {
         func insertImageAtCursor(imageData: Data, cursorPosition: Int) {
             guard let textView = textView else { return }
             
+            print("RichTextEditor: 开始插入图片，数据大小: \(imageData.count) 字节")
+            
+            // 保存当前状态用于撤销
+            let previousAttributedText = textView.attributedText.copy() as! NSAttributedString
+            let previousSelectedRange = textView.selectedRange
+            
             // 创建图片附件
             let imageAttachment = NSTextAttachment()
-            if let image = UIImage(data: imageData) {
-                // 计算合适的图片大小 (限制最大宽度为文本视图宽度的0.8倍)
-                let maxWidth = textView.frame.width * 0.8
-                let scale = min(maxWidth / image.size.width, 1.0)
-                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                
-                imageAttachment.image = image
-                imageAttachment.bounds = CGRect(origin: .zero, size: newSize)
+            guard let image = UIImage(data: imageData) else {
+                print("错误: 无法从数据创建图片")
+                return
+            }
+            
+            // 计算合适的图片大小 (限制最大宽度为文本视图宽度的0.8倍)
+            let maxWidth = textView.frame.width * 0.8
+            let scale = min(maxWidth / image.size.width, 1.0)
+            let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            
+            print("RichTextEditor: 图片尺寸 - 原始: \(image.size), 缩放后: \(newSize)")
+            
+            // 重要：直接设置图片而不是使用contents
+            imageAttachment.image = image
+            imageAttachment.bounds = CGRect(origin: .zero, size: newSize)
+            
+            // 确保图片数据被保存 - 这对RTFD格式至关重要
+            // 使用PNG格式保存以保持质量
+            if let pngData = image.pngData() {
+                imageAttachment.contents = pngData
+                print("RichTextEditor: 已设置图片contents，PNG数据大小: \(pngData.count) 字节")
+            } else if let jpegData = image.jpegData(compressionQuality: 0.9) {
+                imageAttachment.contents = jpegData
+                print("RichTextEditor: 已设置图片contents，JPEG数据大小: \(jpegData.count) 字节")
             }
             
             // 创建包含图片的属性字符串
@@ -974,11 +1050,23 @@ struct RichTextEditor: UIViewRepresentable {
             mutableImageString.append(imageString)
             mutableImageString.append(NSAttributedString(string: "\n"))
             
+            // 为图片字符串设置默认字体，确保一致性
+            let defaultFont = UIFont.preferredFont(forTextStyle: .body).withSize(18)
+            mutableImageString.addAttribute(.font, value: defaultFont, range: NSRange(location: 0, length: mutableImageString.length))
+            
             // 获取当前富文本内容
             let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
             
             // 确保插入位置有效
             let insertPosition = min(cursorPosition, mutableAttributedString.length)
+            
+            // 注册撤销操作
+            textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                coordinator.textView?.attributedText = previousAttributedText
+                coordinator.textView?.selectedRange = previousSelectedRange
+                coordinator.parent.attributedText = previousAttributedText
+                coordinator.parent.onCommit(previousAttributedText)
+            }
             
             // 在指定位置插入图片
             mutableAttributedString.insert(mutableImageString, at: insertPosition)
@@ -990,9 +1078,15 @@ struct RichTextEditor: UIViewRepresentable {
             let newCursorPosition = insertPosition + mutableImageString.length
             textView.selectedRange = NSRange(location: newCursorPosition, length: 0)
             
-            // 更新绑定的文本
+            // 更新绑定的文本并触发保存
             parent.attributedText = mutableAttributedString
+            print("RichTextEditor: 图片插入完成，调用 onCommit")
             parent.onCommit(mutableAttributedString)
+            
+            // 更新撤销重做状态
+            updateUndoRedoState()
+            
+            print("图片已插入到位置 \(insertPosition)，光标移动到 \(newCursorPosition)")
             
             // 确保文本视图保持焦点
             textView.becomeFirstResponder()
@@ -1004,6 +1098,9 @@ struct RichTextEditor: UIViewRepresentable {
             let selectedRange = textView.selectedRange
             
             if selectedRange.length > 0 {
+                // 保存当前状态用于撤销
+                let previousAttributedText = textView.attributedText.copy() as! NSAttributedString
+                
                 let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
                 
                 // 检查是否已有该属性
@@ -1012,6 +1109,14 @@ struct RichTextEditor: UIViewRepresentable {
                     if value != nil {
                         hasAttribute = true
                     }
+                }
+                
+                // 注册撤销操作
+                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
+                    coordinator.textView?.attributedText = previousAttributedText
+                    coordinator.textView?.selectedRange = selectedRange
+                    coordinator.parent.attributedText = previousAttributedText
+                    coordinator.parent.onCommit(previousAttributedText)
                 }
                 
                 if hasAttribute {
@@ -1025,8 +1130,12 @@ struct RichTextEditor: UIViewRepresentable {
                 textView.attributedText = mutableAttributedString
                 textView.selectedRange = selectedRange
                 
-                // 更新绑定的文本
+                // 更新绑定的文本并触发保存
                 parent.attributedText = mutableAttributedString
+                parent.onCommit(mutableAttributedString)
+                
+                // 更新撤销重做状态
+                updateUndoRedoState()
             }
             
             // 确保文本视图保持焦点

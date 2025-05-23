@@ -167,6 +167,7 @@ struct ContentView: View {
                     )
                     .environmentObject(reminderViewModel)
                     .transition(.move(edge: .trailing))
+                    .id(selectedNote.id)
                 } else {
                     // 直接显示全部笔记视图
                     AllNotesView(
@@ -342,6 +343,7 @@ struct ContentView: View {
                                 }
                             )
                             .environmentObject(reminderViewModel)
+                            .id(note.id)
                         } else {
                             // 当没有选中笔记时显示提示
                             VStack {

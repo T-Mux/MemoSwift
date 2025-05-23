@@ -177,12 +177,32 @@ class NoteViewModel: ObservableObject {
             
             // 保存富文本内容
             do {
+                print("NoteViewModel: 开始保存富文本内容，长度: \(attributedContent.length)")
+                
+                // 在保存前检查是否包含图片附件
+                var hasImageAttachments = false
+                attributedContent.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attributedContent.length), options: []) { value, range, _ in
+                    if let attachment = value as? NSTextAttachment {
+                        hasImageAttachments = true
+                        print("NoteViewModel: 发现图片附件在位置 \(range), 图片大小: \(attachment.bounds.size)")
+                        if let imageData = attachment.contents {
+                            print("NoteViewModel: 附件包含数据，大小: \(imageData.count) 字节")
+                        } else if let image = attachment.image {
+                            print("NoteViewModel: 附件包含图片对象，尺寸: \(image.size)")
+                        }
+                    }
+                }
+                
+                // 使用RTFD格式保存以支持图片
+                let documentType: NSAttributedString.DocumentType = hasImageAttachments ? .rtfd : .rtf
+                print("NoteViewModel: 使用格式: \(documentType.rawValue)")
+                
                 let rtfdData = try attributedContent.data(
                     from: NSRange(location: 0, length: attributedContent.length),
-                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+                    documentAttributes: [.documentType: documentType]
                 )
                 note.richContent = rtfdData
-                print("成功保存富文本内容，大小: \(rtfdData.count) 字节")
+                print("成功保存富文本内容，格式: \(documentType.rawValue), 大小: \(rtfdData.count) 字节")
             } catch {
                 print("保存富文本内容出错: \(error)")
                 // 如果RTFD保存失败，尝试保存为RTF格式

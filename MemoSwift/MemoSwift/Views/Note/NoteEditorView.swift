@@ -160,15 +160,20 @@ struct NoteEditorView: View {
                 focusTextEditor = false
             }
         }
-        .onReceive(reminderViewModel.$reminderUpdated) { _ in
-            // 提醒更新时刷新视图
-            viewContext.refresh(note, mergeChanges: true)
-        }
         .onChange(of: note.id) { _, newNoteId in
             // 当传入不同的笔记时，重置编辑器状态
             if let newId = newNoteId {
                 print("检测到笔记变化，重置编辑器状态: \(newId)")
-                refreshNoteContent()
+                
+                // 立即刷新笔记数据
+                viewContext.refresh(note, mergeChanges: true)
+                
+                // 重新设置标题和内容
+                title = note.wrappedTitle
+                attributedContent = note.wrappedRichContent
+                
+                // 重新加载标签
+                selectedTags = noteViewModel.fetchTagsForNote(note: note)
                 loadNoteTags()
                 
                 // 重置焦点状态
@@ -177,7 +182,13 @@ struct NoteEditorView: View {
                 
                 // 取消任何待保存的操作
                 debounceTimer?.invalidate()
+                
+                print("已重置编辑器状态为笔记: \(note.wrappedTitle)")
             }
+        }
+        .onReceive(reminderViewModel.$reminderUpdated) { _ in
+            // 提醒更新时刷新视图
+            viewContext.refresh(note, mergeChanges: true)
         }
     }
     
@@ -464,18 +475,18 @@ struct NoteEditorView: View {
             canUndo: $canUndo,
             canRedo: $canRedo,
                 onCommit: { newContent in
+                    print("NoteEditorView: 收到 onCommit 回调，内容长度: \(newContent.length)")
                     attributedContent = newContent
-                    // 不要在内容更新时自动保存，避免干扰标题编辑
-                    if !isTitleFocused {
-                        debounceSave()
-                    }
-                }
-            )
-            .onChange(of: attributedContent) { _, _ in
-                // 不要在内容更新时自动保存，避免干扰标题编辑
-                if !isTitleFocused {
+                    // 总是触发保存，不管标题是否聚焦
+                    print("NoteEditorView: 调用 debounceSave")
                     debounceSave()
                 }
+            )
+            .onChange(of: attributedContent) { _, newContent in
+                print("NoteEditorView: attributedContent onChange 触发，长度: \(newContent.length)")
+                // 不管标题是否聚焦，都要保存富文本的更改
+                // 因为富文本编辑器的更改应该独立于标题编辑器
+                debounceSave()
             }
             // 允许即使在标题焦点时也可以与富文本编辑器交互
             // .allowsHitTesting(!isTitleFocused)
@@ -556,19 +567,26 @@ struct NoteEditorView: View {
         }
     }
     
+    // 延迟保存（防止频繁保存）
+    private func debounceSave() {
+        print("NoteEditorView: debounceSave 被调用")
+        debounceTimer?.invalidate()
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+            // 直接保存，不检查标题焦点状态 - 富文本更改应该总是被保存
+            print("NoteEditorView: 延迟保存定时器触发，调用 saveChanges")
+            self.saveChanges()
+        }
+    }
+    
     // 保存笔记变更
     private func saveChanges() {
-        // 如果标题正在编辑，延迟保存
-        if isTitleFocused {
-            print("标题正在编辑，延迟保存")
-            return
-        }
-        
+        print("NoteEditorView: saveChanges 被调用")
         // 先刷新笔记确保使用最新对象
         viewContext.refresh(note, mergeChanges: true)
         
         // 将当前富文本内容保存回笔记
         DispatchQueue.main.async {
+            print("NoteEditorView: 调用 noteViewModel.updateNoteWithRichContent")
             self.noteViewModel.updateNoteWithRichContent(
                 note: self.note,
                 title: self.title,
@@ -591,20 +609,6 @@ struct NoteEditorView: View {
         }
         
         print("已刷新笔记内容: \(note.wrappedTitle)")
-    }
-    
-    // 延迟保存（防止频繁保存）
-    private func debounceSave() {
-        // 如果标题正在编辑，不要触发保存，避免焦点切换
-        guard !isTitleFocused else { return }
-        
-        debounceTimer?.invalidate()
-        debounceTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
-            // 使用非捕获的self引用，因为struct不需要weak
-            if !self.isTitleFocused {
-                self.saveChanges()
-            }
-        }
     }
     
     // 处理图片请求

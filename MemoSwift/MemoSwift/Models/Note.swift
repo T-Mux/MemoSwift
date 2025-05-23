@@ -36,26 +36,79 @@ public class Note: NSManagedObject, Identifiable {
     // 获取富文本内容
     public var wrappedRichContent: NSAttributedString {
         if let data = richContent {
+            print("Note: 开始加载富文本内容，数据大小: \(data.count) 字节")
+            
             do {
-                // 修复：移除字符编码选项，RTFD格式会自动处理编码
+                // 首先尝试RTFD格式加载
                 let attributedString = try NSAttributedString(
                     data: data, 
                     options: [.documentType: NSAttributedString.DocumentType.rtfd], 
                     documentAttributes: nil
                 )
-                return attributedString
+                
+                print("Note: 成功加载RTFD格式，内容长度: \(attributedString.length)")
+                
+                // 修复图片附件的显示问题
+                let mutableAttributedString = NSMutableAttributedString(attributedString: attributedString)
+                var imageCount = 0
+                
+                // 检查并修复图片附件
+                mutableAttributedString.enumerateAttribute(.attachment, in: NSRange(location: 0, length: mutableAttributedString.length), options: []) { value, range, _ in
+                    if let attachment = value as? NSTextAttachment {
+                        imageCount += 1
+                        print("Note: 处理第\(imageCount)个图片附件，位置: \(range)")
+                        
+                        // 如果图片为空但有contents数据，尝试重新创建图片
+                        if attachment.image == nil && attachment.contents != nil {
+                            if let imageData = attachment.contents,
+                               let image = UIImage(data: imageData) {
+                                attachment.image = image
+                                
+                                // 重新设置合适的图片大小
+                                let maxWidth: CGFloat = 300.0  // 使用固定的最大宽度
+                                let scale = min(maxWidth / image.size.width, 1.0)
+                                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                                attachment.bounds = CGRect(origin: .zero, size: newSize)
+                                
+                                print("Note: 成功修复图片附件，尺寸: \(newSize)")
+                            } else {
+                                print("Note: 警告 - 无法从附件数据重新创建图片")
+                            }
+                        } else if attachment.image != nil {
+                            // 确保现有图片有合适的尺寸
+                            if let image = attachment.image {
+                                let maxWidth: CGFloat = 300.0
+                                let scale = min(maxWidth / image.size.width, 1.0)
+                                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                                
+                                // 只有当尺寸明显不合适时才调整
+                                if attachment.bounds.size.width <= 0 || attachment.bounds.size.width > maxWidth * 1.2 {
+                                    attachment.bounds = CGRect(origin: .zero, size: newSize)
+                                    print("Note: 调整图片附件尺寸: \(newSize)")
+                                }
+                            }
+                        } else {
+                            print("Note: 警告 - 图片附件无图片且无数据")
+                        }
+                    }
+                }
+                
+                print("Note: 处理完成，共\(imageCount)个图片附件")
+                return mutableAttributedString
+                
             } catch {
-                print("加载富文本内容出错: \(error)")
-                // 如果富文本加载失败，尝试加载为RTF格式
+                print("Note: RTFD加载失败: \(error)")
+                // 如果RTFD格式加载失败，尝试RTF格式
                 do {
                     let attributedString = try NSAttributedString(
                         data: data,
                         options: [.documentType: NSAttributedString.DocumentType.rtf],
                         documentAttributes: nil
                     )
+                    print("Note: RTF格式加载成功，长度: \(attributedString.length)")
                     return attributedString
                 } catch {
-                    print("RTF加载也失败: \(error)")
+                    print("Note: RTF加载也失败: \(error)")
                 }
             }
         }
@@ -64,7 +117,9 @@ public class Note: NSManagedObject, Identifiable {
         let defaultAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.preferredFont(forTextStyle: .body).withSize(18)
         ]
-        return NSAttributedString(string: wrappedContent, attributes: defaultAttributes)
+        let fallbackText = NSAttributedString(string: wrappedContent, attributes: defaultAttributes)
+        print("Note: 使用默认文本内容，长度: \(fallbackText.length)")
+        return fallbackText
     }
     
     // 获取图片数组
