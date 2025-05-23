@@ -39,8 +39,11 @@ public class Note: NSManagedObject, Identifiable {
             return attributedString
         }
         
-        // 如果没有富文本内容或者无法解析，则返回普通文本
-        return NSAttributedString(string: wrappedContent)
+        // 如果没有富文本内容或者无法解析，则返回普通文本并设置默认字体大小为18pt
+        let defaultAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.preferredFont(forTextStyle: .body).withSize(18)
+        ]
+        return NSAttributedString(string: wrappedContent, attributes: defaultAttributes)
     }
     
     // 获取图片数组

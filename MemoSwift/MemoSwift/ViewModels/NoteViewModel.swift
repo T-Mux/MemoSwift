@@ -84,6 +84,23 @@ class NoteViewModel: ObservableObject {
         newNote.updatedAt = Date()
         newNote.folder = folder
         
+        // 创建带有18pt字体的富文本内容
+        let defaultAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.preferredFont(forTextStyle: .body).withSize(18)
+        ]
+        let attributedString = NSAttributedString(string: content, attributes: defaultAttributes)
+        
+        // 保存富文本内容
+        do {
+            let rtfdData = try attributedString.data(
+                from: NSRange(location: 0, length: attributedString.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+            )
+            newNote.richContent = rtfdData
+        } catch {
+            print("保存初始富文本内容出错: \(error)")
+        }
+        
         saveContext()
         // 通知刷新
         noteUpdated = UUID()

@@ -29,7 +29,7 @@ struct RichTextEditor: UIViewRepresentable {
         textView.isScrollEnabled = true
         textView.isEditable = true
         textView.isUserInteractionEnabled = true
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
+        textView.font = UIFont.preferredFont(forTextStyle: .body).withSize(18)
         textView.autocapitalizationType = .sentences
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
