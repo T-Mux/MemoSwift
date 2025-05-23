@@ -21,8 +21,6 @@ struct AllNotesView: View {
     @State private var moveNote: Note?
     @State private var showOCRView = false // OCR视图状态
     @State private var selectedTag: Tag?
-    @State private var showingTagFilter = false
-    @State private var showingSortOptions = false
     @State private var sortOption: SortOption = .modifiedDate
     
     // 排序选项枚举
@@ -104,9 +102,6 @@ struct AllNotesView: View {
                     .environmentObject(noteViewModel)
             }
         }
-        .sheet(isPresented: $showingSortOptions) {
-            sortOptionsSheet
-        }
     }
     
     // 顶部栏
@@ -140,18 +135,26 @@ struct AllNotesView: View {
             
             // 右侧操作按钮
             HStack(spacing: 16) {
-                // 排序按钮
-                Button(action: {
-                    showingSortOptions = true
-                }) {
-                    HStack(spacing: 4) {
-                        SwiftUI.Image(systemName: sortOption.systemImage)
-                            .font(.body)
-                            .foregroundColor(.blue)
-                        SwiftUI.Image(systemName: "chevron.down")
-                            .font(.caption)
-                            .foregroundColor(.blue)
+                // 排序按钮 - 使用Menu替代sheet
+                Menu {
+                    ForEach(SortOption.allCases, id: \.self) { option in
+                        Button {
+                            sortOption = option
+                        } label: {
+                            HStack {
+                                SwiftUI.Image(systemName: option.systemImage)
+                                Text(option.rawValue)
+                                Spacer()
+                                if sortOption == option {
+                                    SwiftUI.Image(systemName: "checkmark")
+                                }
+                            }
+                        }
                     }
+                } label: {
+                    SwiftUI.Image(systemName: "arrow.up.arrow.down")
+                        .font(.body)
+                        .foregroundColor(.blue)
                 }
             }
             .padding(.trailing)
@@ -178,41 +181,6 @@ struct AllNotesView: View {
             }
         )
         .animation(.easeInOut(duration: 0.3), value: noteViewModel.highlightedNoteID != nil)
-    }
-    
-    // 排序选项弹窗
-    private var sortOptionsSheet: some View {
-        NavigationView {
-            List {
-                ForEach(SortOption.allCases, id: \.self) { option in
-                    Button {
-                        sortOption = option
-                        showingSortOptions = false
-                    } label: {
-                        HStack {
-                            SwiftUI.Image(systemName: option.systemImage)
-                                .foregroundColor(.blue)
-                                .frame(width: 20)
-                            Text(option.rawValue)
-                            Spacer()
-                            if sortOption == option {
-                                SwiftUI.Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("排序方式")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("完成") {
-                        showingSortOptions = false
-                    }
-                }
-            }
-        }
     }
     
     // 单个笔记行视图
