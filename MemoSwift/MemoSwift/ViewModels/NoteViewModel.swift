@@ -160,67 +160,41 @@ class NoteViewModel: ObservableObject {
                 )
                 richContentChanged = !NSAttributedString.areEqual(existingAttributedString, attributedContent)
             } catch {
-                // 如果无法解析现有富文本内容，则认为发生了变化
                 richContentChanged = true
             }
         } else {
-            // 如果之前没有富文本内容，且新内容不为空，则认为发生了变化
             richContentChanged = attributedContent.length > 0
         }
         
         // 只有在内容真正发生变化时才进行更新
         if titleChanged || contentChanged || richContentChanged {
             note.title = title
-            
-            // 将富文本内容转换为普通文本保存
             note.content = contentString
             
-            // 保存富文本内容
+            // 简单保存富文本内容
             do {
-                print("NoteViewModel: 开始保存富文本内容，长度: \(attributedContent.length)")
-                
-                // 在保存前检查是否包含图片附件
-                var hasImageAttachments = false
+                // 检查是否包含图片附件
+                var hasImages = false
                 attributedContent.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attributedContent.length), options: []) { value, range, _ in
-                    if let attachment = value as? NSTextAttachment {
-                        hasImageAttachments = true
-                        print("NoteViewModel: 发现图片附件在位置 \(range), 图片大小: \(attachment.bounds.size)")
-                        if let imageData = attachment.contents {
-                            print("NoteViewModel: 附件包含数据，大小: \(imageData.count) 字节")
-                        } else if let image = attachment.image {
-                            print("NoteViewModel: 附件包含图片对象，尺寸: \(image.size)")
-                        }
+                    if value is NSTextAttachment {
+                        hasImages = true
                     }
                 }
                 
-                // 使用RTFD格式保存以支持图片
-                let documentType: NSAttributedString.DocumentType = hasImageAttachments ? .rtfd : .rtf
-                print("NoteViewModel: 使用格式: \(documentType.rawValue)")
-                
+                // 根据是否有图片选择格式
+                let documentType: NSAttributedString.DocumentType = hasImages ? .rtfd : .rtf
                 let rtfdData = try attributedContent.data(
                     from: NSRange(location: 0, length: attributedContent.length),
                     documentAttributes: [.documentType: documentType]
                 )
                 note.richContent = rtfdData
-                print("成功保存富文本内容，格式: \(documentType.rawValue), 大小: \(rtfdData.count) 字节")
+                
             } catch {
                 print("保存富文本内容出错: \(error)")
-                // 如果RTFD保存失败，尝试保存为RTF格式
-                do {
-                    let rtfData = try attributedContent.data(
-                        from: NSRange(location: 0, length: attributedContent.length),
-                        documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-                    )
-                    note.richContent = rtfData
-                    print("降级为RTF格式保存成功，大小: \(rtfData.count) 字节")
-                } catch {
-                    print("RTF保存也失败: \(error)")
-                    // 失败则只保存普通文本
-                    note.content = attributedContent.string
-                }
+                note.content = attributedContent.string
+                note.richContent = nil
             }
             
-            // 只有在内容发生变化时才更新修改时间
             note.updatedAt = Date()
             saveContext()
             noteUpdated = UUID()

@@ -418,12 +418,20 @@ struct RichTextEditor: UIViewRepresentable {
                     }
                 }
                 
-                // 注册撤销操作
-                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
-                    coordinator.textView?.attributedText = previousAttributedText
-                    coordinator.textView?.selectedRange = selectedRange
-                    coordinator.parent.attributedText = previousAttributedText
-                    coordinator.parent.onCommit(previousAttributedText)
+                // 注册撤销操作 - 避免 Swift 6 @Sendable 警告
+                if let undoManager = textView.undoManager {
+                    let undoData = try? previousAttributedText.data(from: NSRange(location: 0, length: previousAttributedText.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+                    let undoRange = selectedRange
+                    
+                    undoManager.registerUndo(withTarget: self) { coordinator in
+                        if let data = undoData,
+                           let restoredText = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+                            coordinator.textView?.attributedText = restoredText
+                            coordinator.textView?.selectedRange = undoRange
+                            coordinator.parent.attributedText = restoredText
+                            coordinator.parent.onCommit(restoredText)
+                        }
+                    }
                 }
                 
                 // 根据当前状态切换粗体
@@ -503,12 +511,20 @@ struct RichTextEditor: UIViewRepresentable {
                     }
                 }
                 
-                // 注册撤销操作
-                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
-                    coordinator.textView?.attributedText = previousAttributedText
-                    coordinator.textView?.selectedRange = selectedRange
-                    coordinator.parent.attributedText = previousAttributedText
-                    coordinator.parent.onCommit(previousAttributedText)
+                // 注册撤销操作 - 避免 Swift 6 @Sendable 警告
+                if let undoManager = textView.undoManager {
+                    let undoData = try? previousAttributedText.data(from: NSRange(location: 0, length: previousAttributedText.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+                    let undoRange = selectedRange
+                    
+                    undoManager.registerUndo(withTarget: self) { coordinator in
+                        if let data = undoData,
+                           let restoredText = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+                            coordinator.textView?.attributedText = restoredText
+                            coordinator.textView?.selectedRange = undoRange
+                            coordinator.parent.attributedText = restoredText
+                            coordinator.parent.onCommit(restoredText)
+                        }
+                    }
                 }
                 
                 // 根据当前状态切换斜体
@@ -802,12 +818,20 @@ struct RichTextEditor: UIViewRepresentable {
                 
                 let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
                 
-                // 注册撤销操作
-                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
-                    coordinator.textView?.attributedText = previousAttributedText
-                    coordinator.textView?.selectedRange = selectedRange
-                    coordinator.parent.attributedText = previousAttributedText
-                    coordinator.parent.onCommit(previousAttributedText)
+                // 注册撤销操作 - 避免 Swift 6 @Sendable 警告
+                if let undoManager = textView.undoManager {
+                    let undoData = try? previousAttributedText.data(from: NSRange(location: 0, length: previousAttributedText.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+                    let undoRange = selectedRange
+                    
+                    undoManager.registerUndo(withTarget: self) { coordinator in
+                        if let data = undoData,
+                           let restoredText = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+                            coordinator.textView?.attributedText = restoredText
+                            coordinator.textView?.selectedRange = undoRange
+                            coordinator.parent.attributedText = restoredText
+                            coordinator.parent.onCommit(restoredText)
+                        }
+                    }
                 }
                 
                 mutableAttributedString.enumerateAttribute(.font, in: selectedRange, options: []) { value, range, _ in
@@ -1007,50 +1031,50 @@ struct RichTextEditor: UIViewRepresentable {
         func insertImageAtCursor(imageData: Data, cursorPosition: Int) {
             guard let textView = textView else { return }
             
-            print("RichTextEditor: 开始插入图片，数据大小: \(imageData.count) 字节")
-            
-            // 保存当前状态用于撤销
-            let previousAttributedText = textView.attributedText.copy() as! NSAttributedString
-            let previousSelectedRange = textView.selectedRange
-            
-            // 创建图片附件
-            let imageAttachment = NSTextAttachment()
-            guard let image = UIImage(data: imageData) else {
+            // 验证图片数据
+            guard let originalImage = UIImage(data: imageData) else {
                 print("错误: 无法从数据创建图片")
                 return
             }
             
-            // 计算合适的图片大小 (限制最大宽度为文本视图宽度的0.8倍)
-            let maxWidth = textView.frame.width * 0.8
-            let scale = min(maxWidth / image.size.width, 1.0)
-            let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            // 使用更保守的屏幕适配计算逻辑
+            let screenWidth = UIScreen.main.bounds.width
+            let maxWidth = min(screenWidth * 0.4, 160.0) // 更小：40%屏幕宽度，最大160px
+            let minWidth: CGFloat = 100 // 最小宽度
             
-            print("RichTextEditor: 图片尺寸 - 原始: \(image.size), 缩放后: \(newSize)")
+            // 确保图片宽度在合理范围内
+            let targetWidth = min(max(maxWidth, minWidth), originalImage.size.width)
+            let scale = targetWidth / originalImage.size.width
+            let targetSize = CGSize(
+                width: targetWidth,
+                height: originalImage.size.height * scale
+            )
             
-            // 重要：直接设置图片而不是使用contents
-            imageAttachment.image = image
-            imageAttachment.bounds = CGRect(origin: .zero, size: newSize)
+            print("=== 图片尺寸调试信息 ===")
+            print("屏幕宽度: \(screenWidth)")
+            print("计算最大宽度: \(maxWidth)")
+            print("原始图片尺寸: \(originalImage.size)")
+            print("目标尺寸: \(targetSize)")
+            print("缩放比例: \(scale)")
             
-            // 确保图片数据被保存 - 这对RTFD格式至关重要
-            // 使用PNG格式保存以保持质量
-            if let pngData = image.pngData() {
-                imageAttachment.contents = pngData
-                print("RichTextEditor: 已设置图片contents，PNG数据大小: \(pngData.count) 字节")
-            } else if let jpegData = image.jpegData(compressionQuality: 0.9) {
-                imageAttachment.contents = jpegData
-                print("RichTextEditor: 已设置图片contents，JPEG数据大小: \(jpegData.count) 字节")
-            }
+            // 创建高质量的适配尺寸图片
+            let adaptedImage = createScreenAdaptedImage(originalImage, targetSize: targetSize)
+            
+            // 创建图片附件
+            let imageAttachment = NSTextAttachment()
+            imageAttachment.image = adaptedImage
+            imageAttachment.bounds = CGRect(origin: .zero, size: targetSize)
             
             // 创建包含图片的属性字符串
             let imageString = NSAttributedString(attachment: imageAttachment)
             
-            // 在图片前后添加换行符，确保图片独占一行
+            // 在图片前后添加换行符
             let mutableImageString = NSMutableAttributedString()
             mutableImageString.append(NSAttributedString(string: "\n"))
             mutableImageString.append(imageString)
             mutableImageString.append(NSAttributedString(string: "\n"))
             
-            // 为图片字符串设置默认字体，确保一致性
+            // 设置默认字体
             let defaultFont = UIFont.preferredFont(forTextStyle: .body).withSize(18)
             mutableImageString.addAttribute(.font, value: defaultFont, range: NSRange(location: 0, length: mutableImageString.length))
             
@@ -1059,14 +1083,6 @@ struct RichTextEditor: UIViewRepresentable {
             
             // 确保插入位置有效
             let insertPosition = min(cursorPosition, mutableAttributedString.length)
-            
-            // 注册撤销操作
-            textView.undoManager?.registerUndo(withTarget: self) { coordinator in
-                coordinator.textView?.attributedText = previousAttributedText
-                coordinator.textView?.selectedRange = previousSelectedRange
-                coordinator.parent.attributedText = previousAttributedText
-                coordinator.parent.onCommit(previousAttributedText)
-            }
             
             // 在指定位置插入图片
             mutableAttributedString.insert(mutableImageString, at: insertPosition)
@@ -1080,16 +1096,35 @@ struct RichTextEditor: UIViewRepresentable {
             
             // 更新绑定的文本并触发保存
             parent.attributedText = mutableAttributedString
-            print("RichTextEditor: 图片插入完成，调用 onCommit")
             parent.onCommit(mutableAttributedString)
             
-            // 更新撤销重做状态
-            updateUndoRedoState()
-            
-            print("图片已插入到位置 \(insertPosition)，光标移动到 \(newCursorPosition)")
+            print("图片已插入，最终尺寸: \(targetSize)")
             
             // 确保文本视图保持焦点
             textView.becomeFirstResponder()
+        }
+        
+        // 创建屏幕适配的高质量图片
+        private func createScreenAdaptedImage(_ originalImage: UIImage, targetSize: CGSize) -> UIImage {
+            // 使用UIGraphicsImageRenderer创建高质量图片
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = min(UIScreen.main.scale, 2.0) // 限制scale以平衡质量和性能
+            format.opaque = false // 支持透明背景
+            format.preferredRange = .standard
+            
+            let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+            
+            let adaptedImage = renderer.image { context in
+                // 设置高质量插值
+                context.cgContext.interpolationQuality = .high
+                context.cgContext.setShouldAntialias(true)
+                context.cgContext.setAllowsAntialiasing(true)
+                
+                // 绘制图片到目标尺寸
+                originalImage.draw(in: CGRect(origin: .zero, size: targetSize))
+            }
+            
+            return adaptedImage
         }
         
         // 切换文本属性
@@ -1111,12 +1146,20 @@ struct RichTextEditor: UIViewRepresentable {
                     }
                 }
                 
-                // 注册撤销操作
-                textView.undoManager?.registerUndo(withTarget: self) { coordinator in
-                    coordinator.textView?.attributedText = previousAttributedText
-                    coordinator.textView?.selectedRange = selectedRange
-                    coordinator.parent.attributedText = previousAttributedText
-                    coordinator.parent.onCommit(previousAttributedText)
+                // 注册撤销操作 - 避免 Swift 6 @Sendable 警告
+                if let undoManager = textView.undoManager {
+                    let undoData = try? previousAttributedText.data(from: NSRange(location: 0, length: previousAttributedText.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+                    let undoRange = selectedRange
+                    
+                    undoManager.registerUndo(withTarget: self) { coordinator in
+                        if let data = undoData,
+                           let restoredText = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+                            coordinator.textView?.attributedText = restoredText
+                            coordinator.textView?.selectedRange = undoRange
+                            coordinator.parent.attributedText = restoredText
+                            coordinator.parent.onCommit(restoredText)
+                        }
+                    }
                 }
                 
                 if hasAttribute {

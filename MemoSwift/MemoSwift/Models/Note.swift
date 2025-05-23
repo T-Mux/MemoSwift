@@ -36,8 +36,6 @@ public class Note: NSManagedObject, Identifiable {
     // 获取富文本内容
     public var wrappedRichContent: NSAttributedString {
         if let data = richContent {
-            print("Note: 开始加载富文本内容，数据大小: \(data.count) 字节")
-            
             do {
                 // 首先尝试RTFD格式加载
                 let attributedString = try NSAttributedString(
@@ -46,58 +44,10 @@ public class Note: NSManagedObject, Identifiable {
                     documentAttributes: nil
                 )
                 
-                print("Note: 成功加载RTFD格式，内容长度: \(attributedString.length)")
-                
-                // 修复图片附件的显示问题
-                let mutableAttributedString = NSMutableAttributedString(attributedString: attributedString)
-                var imageCount = 0
-                
-                // 检查并修复图片附件
-                mutableAttributedString.enumerateAttribute(.attachment, in: NSRange(location: 0, length: mutableAttributedString.length), options: []) { value, range, _ in
-                    if let attachment = value as? NSTextAttachment {
-                        imageCount += 1
-                        print("Note: 处理第\(imageCount)个图片附件，位置: \(range)")
-                        
-                        // 如果图片为空但有contents数据，尝试重新创建图片
-                        if attachment.image == nil && attachment.contents != nil {
-                            if let imageData = attachment.contents,
-                               let image = UIImage(data: imageData) {
-                                attachment.image = image
-                                
-                                // 重新设置合适的图片大小
-                                let maxWidth: CGFloat = 300.0  // 使用固定的最大宽度
-                                let scale = min(maxWidth / image.size.width, 1.0)
-                                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                                attachment.bounds = CGRect(origin: .zero, size: newSize)
-                                
-                                print("Note: 成功修复图片附件，尺寸: \(newSize)")
-                            } else {
-                                print("Note: 警告 - 无法从附件数据重新创建图片")
-                            }
-                        } else if attachment.image != nil {
-                            // 确保现有图片有合适的尺寸
-                            if let image = attachment.image {
-                                let maxWidth: CGFloat = 300.0
-                                let scale = min(maxWidth / image.size.width, 1.0)
-                                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                                
-                                // 只有当尺寸明显不合适时才调整
-                                if attachment.bounds.size.width <= 0 || attachment.bounds.size.width > maxWidth * 1.2 {
-                                    attachment.bounds = CGRect(origin: .zero, size: newSize)
-                                    print("Note: 调整图片附件尺寸: \(newSize)")
-                                }
-                            }
-                        } else {
-                            print("Note: 警告 - 图片附件无图片且无数据")
-                        }
-                    }
-                }
-                
-                print("Note: 处理完成，共\(imageCount)个图片附件")
-                return mutableAttributedString
+                // 修正图片附件的尺寸
+                return correctImageAttachmentSizes(attributedString)
                 
             } catch {
-                print("Note: RTFD加载失败: \(error)")
                 // 如果RTFD格式加载失败，尝试RTF格式
                 do {
                     let attributedString = try NSAttributedString(
@@ -105,10 +55,9 @@ public class Note: NSManagedObject, Identifiable {
                         options: [.documentType: NSAttributedString.DocumentType.rtf],
                         documentAttributes: nil
                     )
-                    print("Note: RTF格式加载成功，长度: \(attributedString.length)")
-                    return attributedString
+                    return correctImageAttachmentSizes(attributedString)
                 } catch {
-                    print("Note: RTF加载也失败: \(error)")
+                    print("富文本内容加载失败: \(error)")
                 }
             }
         }
@@ -117,9 +66,98 @@ public class Note: NSManagedObject, Identifiable {
         let defaultAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.preferredFont(forTextStyle: .body).withSize(18)
         ]
-        let fallbackText = NSAttributedString(string: wrappedContent, attributes: defaultAttributes)
-        print("Note: 使用默认文本内容，长度: \(fallbackText.length)")
-        return fallbackText
+        return NSAttributedString(string: wrappedContent, attributes: defaultAttributes)
+    }
+    
+    // 修正图片附件的尺寸，确保它们适合屏幕宽度
+    private func correctImageAttachmentSizes(_ attributedString: NSAttributedString) -> NSAttributedString {
+        let mutableAttributedString = NSMutableAttributedString(attributedString: attributedString)
+        
+        // 使用与插入时相同的更保守计算逻辑
+        let screenWidth = UIScreen.main.bounds.width
+        let maxWidth = min(screenWidth * 0.4, 160.0) // 更小：40%屏幕宽度，最大160px
+        let minWidth: CGFloat = 100
+        
+        print("=== Note加载时图片尺寸修正 ===")
+        print("屏幕宽度: \(screenWidth)")
+        print("计算最大宽度: \(maxWidth)")
+        
+        mutableAttributedString.enumerateAttribute(.attachment, in: NSRange(location: 0, length: mutableAttributedString.length), options: []) { value, range, _ in
+            if let attachment = value as? NSTextAttachment {
+                var originalSize: CGSize
+                var imageToProcess: UIImage?
+                
+                // 获取原始图片和尺寸
+                if let image = attachment.image {
+                    originalSize = image.size
+                    imageToProcess = image
+                } else if let contents = attachment.contents, contents.count > 0 {
+                    // 如果没有图片但有数据，从数据创建图片
+                    if let image = UIImage(data: contents) {
+                        originalSize = image.size
+                        imageToProcess = image
+                        print("从数据恢复图片，原始尺寸: \(originalSize)")
+                    } else {
+                        return // 无法处理的附件
+                    }
+                } else {
+                    return // 无法处理的附件
+                }
+                
+                guard let sourceImage = imageToProcess else { return }
+                
+                // 使用与插入时相同的尺寸计算逻辑
+                let targetWidth = min(max(maxWidth, minWidth), originalSize.width)
+                let scale = targetWidth / originalSize.width
+                let targetSize = CGSize(
+                    width: targetWidth,
+                    height: originalSize.height * scale
+                )
+                
+                // 检查是否需要调整尺寸
+                let currentBounds = attachment.bounds
+                let needsResize = abs(currentBounds.width - targetSize.width) > 1.0 || 
+                                abs(currentBounds.height - targetSize.height) > 1.0
+                
+                print("图片检查 - 原始:\(originalSize) 目标:\(targetSize) 当前bounds:\(currentBounds) 需要调整:\(needsResize)")
+                
+                if needsResize {
+                    // 重新创建适配屏幕的图片
+                    let adaptedImage = createAdaptedImage(sourceImage, targetSize: targetSize)
+                    
+                    // 更新附件的图片和边界
+                    attachment.image = adaptedImage
+                    attachment.bounds = CGRect(origin: .zero, size: targetSize)
+                    
+                    print("图片尺寸修正: \(originalSize) -> \(targetSize)")
+                } else {
+                    print("图片尺寸已正确: \(targetSize)")
+                }
+            }
+        }
+        
+        return mutableAttributedString
+    }
+    
+    // 创建适配屏幕的图片
+    private func createAdaptedImage(_ originalImage: UIImage, targetSize: CGSize) -> UIImage {
+        // 使用与RichTextEditor相同的图片渲染逻辑
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = min(UIScreen.main.scale, 2.0) // 限制scale以平衡质量和性能
+        format.opaque = false // 支持透明背景
+        format.preferredRange = .standard
+        
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        
+        return renderer.image { context in
+            // 设置高质量插值
+            context.cgContext.interpolationQuality = .high
+            context.cgContext.setShouldAntialias(true)
+            context.cgContext.setAllowsAntialiasing(true)
+            
+            // 绘制图片到目标尺寸
+            originalImage.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
     }
     
     // 获取图片数组
