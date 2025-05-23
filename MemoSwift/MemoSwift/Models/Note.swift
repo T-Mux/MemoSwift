@@ -35,8 +35,29 @@ public class Note: NSManagedObject, Identifiable {
     
     // 获取富文本内容
     public var wrappedRichContent: NSAttributedString {
-        if let data = richContent, let attributedString = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtfd, .characterEncoding: String.Encoding.utf8.rawValue], documentAttributes: nil) {
-            return attributedString
+        if let data = richContent {
+            do {
+                // 修复：移除字符编码选项，RTFD格式会自动处理编码
+                let attributedString = try NSAttributedString(
+                    data: data, 
+                    options: [.documentType: NSAttributedString.DocumentType.rtfd], 
+                    documentAttributes: nil
+                )
+                return attributedString
+            } catch {
+                print("加载富文本内容出错: \(error)")
+                // 如果富文本加载失败，尝试加载为RTF格式
+                do {
+                    let attributedString = try NSAttributedString(
+                        data: data,
+                        options: [.documentType: NSAttributedString.DocumentType.rtf],
+                        documentAttributes: nil
+                    )
+                    return attributedString
+                } catch {
+                    print("RTF加载也失败: \(error)")
+                }
+            }
         }
         
         // 如果没有富文本内容或者无法解析，则返回普通文本并设置默认字体大小为18pt

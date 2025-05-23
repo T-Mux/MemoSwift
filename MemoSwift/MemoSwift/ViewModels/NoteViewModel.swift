@@ -33,6 +33,7 @@ class NoteViewModel: ObservableObject {
     // 设置选中笔记，确保清除旧的选择状态
     func setSelectedNote(_ note: Note?) {
         // 先清除选中状态，确保视图完全刷新
+        let oldSelectedNote = self.selectedNote
         self.selectedNote = nil
         
         guard let noteToSelect = note else {
@@ -45,6 +46,15 @@ class NoteViewModel: ObservableObject {
             return
         }
         
+        // 确保不是选择同一个笔记
+        if let oldNote = oldSelectedNote, let oldId = oldNote.id, oldId == noteId {
+            print("选择的是同一个笔记，直接设置")
+            self.selectedNote = noteToSelect
+            return
+        }
+        
+        print("准备选择新笔记: \(noteToSelect.wrappedTitle), ID: \(noteId)")
+        
         // 使用微小的延迟确保UI状态更新
         DispatchQueue.main.async {
             // 根据ID重新获取笔记对象，确保使用最新的实例
@@ -55,6 +65,8 @@ class NoteViewModel: ObservableObject {
             do {
                 let results = try self.viewContext.fetch(fetchRequest)
                 if let freshNote = results.first {
+                    // 确保使用最新的笔记对象
+                    self.viewContext.refresh(freshNote, mergeChanges: true)
                     // 设置新的选中笔记
                     self.selectedNote = freshNote
                     print("已选择笔记: \(freshNote.wrappedTitle)")
@@ -130,27 +142,72 @@ class NoteViewModel: ObservableObject {
         // 先刷新笔记确保使用最新数据
         viewContext.refresh(note, mergeChanges: true)
         
-        note.title = title
+        // 检查标题是否发生变化
+        let titleChanged = note.title != title
         
-        // 将富文本内容转换为普通文本保存
-        note.content = attributedContent.string
+        // 检查内容是否发生变化
+        let contentString = attributedContent.string
+        let contentChanged = note.content != contentString
         
-        // 保存富文本内容
-        do {
-            let rtfdData = try attributedContent.data(
-                from: NSRange(location: 0, length: attributedContent.length),
-                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
-            )
-            note.richContent = rtfdData
-        } catch {
-            print("保存富文本内容出错: \(error)")
-            // 失败则只保存普通文本
-            note.content = attributedContent.string
+        // 检查富文本内容是否发生变化
+        var richContentChanged = false
+        if let existingRichContent = note.richContent {
+            do {
+                let existingAttributedString = try NSAttributedString(
+                    data: existingRichContent,
+                    options: [.documentType: NSAttributedString.DocumentType.rtfd],
+                    documentAttributes: nil
+                )
+                richContentChanged = !NSAttributedString.areEqual(existingAttributedString, attributedContent)
+            } catch {
+                // 如果无法解析现有富文本内容，则认为发生了变化
+                richContentChanged = true
+            }
+        } else {
+            // 如果之前没有富文本内容，且新内容不为空，则认为发生了变化
+            richContentChanged = attributedContent.length > 0
         }
         
-        note.updatedAt = Date()
-        saveContext()
-        noteUpdated = UUID()
+        // 只有在内容真正发生变化时才进行更新
+        if titleChanged || contentChanged || richContentChanged {
+            note.title = title
+            
+            // 将富文本内容转换为普通文本保存
+            note.content = contentString
+            
+            // 保存富文本内容
+            do {
+                let rtfdData = try attributedContent.data(
+                    from: NSRange(location: 0, length: attributedContent.length),
+                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+                )
+                note.richContent = rtfdData
+                print("成功保存富文本内容，大小: \(rtfdData.count) 字节")
+            } catch {
+                print("保存富文本内容出错: \(error)")
+                // 如果RTFD保存失败，尝试保存为RTF格式
+                do {
+                    let rtfData = try attributedContent.data(
+                        from: NSRange(location: 0, length: attributedContent.length),
+                        documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+                    )
+                    note.richContent = rtfData
+                    print("降级为RTF格式保存成功，大小: \(rtfData.count) 字节")
+                } catch {
+                    print("RTF保存也失败: \(error)")
+                    // 失败则只保存普通文本
+                    note.content = attributedContent.string
+                }
+            }
+            
+            // 只有在内容发生变化时才更新修改时间
+            note.updatedAt = Date()
+            saveContext()
+            noteUpdated = UUID()
+            print("笔记内容已变化，已更新: \(title)")
+        } else {
+            print("笔记内容无变化，未更新修改时间: \(title)")
+        }
     }
     
     // 添加图片到笔记

@@ -32,6 +32,7 @@ struct NoteEditorView: View {
     @State private var selectedTags: [Tag] = []
     @State private var debounceTimer: Timer?
     @State private var showingReminderList = false
+    @State private var cursorPositionForImageInsertion: Int = 0
     
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.managedObjectContext) private var viewContext
@@ -78,7 +79,15 @@ struct NoteEditorView: View {
             )
             .onDisappear {
                 if let image = selectedImage, let imageData = image.jpegData(compressionQuality: 0.8) {
-                    noteViewModel.addImage(to: note, imageData: imageData)
+                    // 发送通知给富文本编辑器，在光标位置插入图片
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("RichTextEditorInsertImage"),
+                        object: nil,
+                        userInfo: [
+                            "imageData": imageData,
+                            "cursorPosition": cursorPositionForImageInsertion
+                        ]
+                    )
                 }
                 selectedImage = nil
             }
@@ -113,12 +122,14 @@ struct NoteEditorView: View {
                 queue: .main
             ) { [self] notification in
                 if let userInfo = notification.userInfo,
-                   let sourceRaw = userInfo["source"] as? Int {
+                   let sourceRaw = userInfo["source"] as? Int,
+                   let cursorPosition = userInfo["cursorPosition"] as? Int {
                     // 确保在主线程处理UI操作
                     DispatchQueue.main.async {
                         // 根据整数值确定图片来源
                         let source: PhotoSource = (sourceRaw == 0) ? .camera : .photoLibrary
-                        handleImageRequest(source: source)
+                        // 保存光标位置用于后续图片插入
+                        self.handleImageRequest(source: source, cursorPosition: cursorPosition)
                     }
                 }
             }
@@ -152,6 +163,21 @@ struct NoteEditorView: View {
         .onReceive(reminderViewModel.$reminderUpdated) { _ in
             // 提醒更新时刷新视图
             viewContext.refresh(note, mergeChanges: true)
+        }
+        .onChange(of: note.id) { _, newNoteId in
+            // 当传入不同的笔记时，重置编辑器状态
+            if let newId = newNoteId {
+                print("检测到笔记变化，重置编辑器状态: \(newId)")
+                refreshNoteContent()
+                loadNoteTags()
+                
+                // 重置焦点状态
+                isTitleFocused = false
+                focusTextEditor = false
+                
+                // 取消任何待保存的操作
+                debounceTimer?.invalidate()
+            }
         }
     }
     
@@ -215,16 +241,6 @@ struct NoteEditorView: View {
         }
         .padding(.vertical, 8)
         .background(Color(.systemBackground))
-        .actionSheet(isPresented: $showingImageOptions) {
-            ActionSheet(
-                title: Text("添加图片"),
-                buttons: [
-                    .default(Text("相机")) { handleImageRequest(source: .camera) },
-                    .default(Text("照片库")) { handleImageRequest(source: .photoLibrary) },
-                    .cancel()
-                ]
-            )
-        }
     }
     
     // 标题输入框部分
@@ -592,9 +608,11 @@ struct NoteEditorView: View {
     }
     
     // 处理图片请求
-    private func handleImageRequest(source: PhotoSource) {
+    private func handleImageRequest(source: PhotoSource, cursorPosition: Int) {
         imageSource = source
         showingImagePicker = true
+        selectedImage = nil
+        cursorPositionForImageInsertion = cursorPosition
     }
     
     // 加载笔记的标签

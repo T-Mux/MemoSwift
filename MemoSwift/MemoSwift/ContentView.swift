@@ -173,12 +173,14 @@ struct ContentView: View {
                         noteViewModel: noteViewModel,
                         folderViewModel: folderViewModel,
                         onBack: {
+                            // 返回时清理状态
+                            noteViewModel.selectedNote = nil
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 folderViewModel.showAllNotes = false
                             }
                         }
                     )
-                    .transition(.move(edge: .trailing))
+                    .transition(.slide)
                     .onAppear {
                         print("ContentView: AllNotesView 直接显示")
                     }

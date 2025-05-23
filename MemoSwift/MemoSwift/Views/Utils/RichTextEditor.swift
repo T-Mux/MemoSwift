@@ -235,6 +235,14 @@ struct RichTextEditor: UIViewRepresentable {
                 name: UITextView.textDidChangeNotification,
                 object: nil
             )
+            
+            // 添加图片插入通知监听
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleImageInsertion),
+                name: NSNotification.Name("RichTextEditorInsertImage"),
+                object: nil
+            )
         }
         
         deinit {
@@ -266,6 +274,16 @@ struct RichTextEditor: UIViewRepresentable {
             }
         }
         
+        @objc func handleImageInsertion(_ notification: Notification) {
+            if let userInfo = notification.userInfo,
+               let imageData = userInfo["imageData"] as? Data,
+               let cursorPosition = userInfo["cursorPosition"] as? Int {
+                DispatchQueue.main.async {
+                    self.insertImageAtCursor(imageData: imageData, cursorPosition: cursorPosition)
+                }
+            }
+        }
+        
         func updateUndoRedoState() {
             if let textView = textView {
                 // 使用 Task 和 MainActor 确保在正确的上下文中更新 UI 状态
@@ -287,6 +305,14 @@ struct RichTextEditor: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             isActivelyEditing = true
             lastEditTimestamp = Date()
+            
+            // 确保为文本变化注册撤销操作
+            if let undoManager = textView.undoManager {
+                undoManager.registerUndo(withTarget: textView) { (targetTextView) in
+                    // 撤销操作的闭包
+                    targetTextView.attributedText = self.parent.attributedText
+                }
+            }
             
             // 更新文本内容
             parent.attributedText = textView.attributedText
@@ -898,22 +924,78 @@ struct RichTextEditor: UIViewRepresentable {
         
         // 处理图片选项
         private func handleImageOption(source: ImageSource) {
-            // 使用后台队列发送通知，避免在主线程执行I/O操作
-            DispatchQueue.global(qos: .userInitiated).async {
-                // 发送通知，让外部处理图片选择或OCR
-                let userInfo: [String: Any] = ["source": source.rawValue]
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("RichTextEditorImageRequest"),
-                    object: nil,
-                    userInfo: userInfo
-                )
+            // 保存当前光标位置
+            if let textView = textView {
+                // 将光标位置保存到通知的userInfo中
+                let userInfo: [String: Any] = [
+                    "source": source.rawValue,
+                    "cursorPosition": textView.selectedRange.location
+                ]
                 
-                // 切回主线程设置UI状态
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.preventKeyboardDismiss = true
-                    self.textView?.becomeFirstResponder()
+                // 使用后台队列发送通知，避免在主线程执行I/O操作
+                DispatchQueue.global(qos: .userInitiated).async {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("RichTextEditorImageRequest"),
+                        object: nil,
+                        userInfo: userInfo
+                    )
+                    
+                    // 切回主线程设置UI状态
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.preventKeyboardDismiss = true
+                        self.textView?.becomeFirstResponder()
+                    }
                 }
             }
+        }
+        
+        // 在光标位置插入图片
+        func insertImageAtCursor(imageData: Data, cursorPosition: Int) {
+            guard let textView = textView else { return }
+            
+            // 创建图片附件
+            let imageAttachment = NSTextAttachment()
+            if let image = UIImage(data: imageData) {
+                // 计算合适的图片大小 (限制最大宽度为文本视图宽度的0.8倍)
+                let maxWidth = textView.frame.width * 0.8
+                let scale = min(maxWidth / image.size.width, 1.0)
+                let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                
+                imageAttachment.image = image
+                imageAttachment.bounds = CGRect(origin: .zero, size: newSize)
+            }
+            
+            // 创建包含图片的属性字符串
+            let imageString = NSAttributedString(attachment: imageAttachment)
+            
+            // 在图片前后添加换行符，确保图片独占一行
+            let mutableImageString = NSMutableAttributedString()
+            mutableImageString.append(NSAttributedString(string: "\n"))
+            mutableImageString.append(imageString)
+            mutableImageString.append(NSAttributedString(string: "\n"))
+            
+            // 获取当前富文本内容
+            let mutableAttributedString = NSMutableAttributedString(attributedString: textView.attributedText)
+            
+            // 确保插入位置有效
+            let insertPosition = min(cursorPosition, mutableAttributedString.length)
+            
+            // 在指定位置插入图片
+            mutableAttributedString.insert(mutableImageString, at: insertPosition)
+            
+            // 更新文本视图
+            textView.attributedText = mutableAttributedString
+            
+            // 设置光标位置到图片后面
+            let newCursorPosition = insertPosition + mutableImageString.length
+            textView.selectedRange = NSRange(location: newCursorPosition, length: 0)
+            
+            // 更新绑定的文本
+            parent.attributedText = mutableAttributedString
+            parent.onCommit(mutableAttributedString)
+            
+            // 确保文本视图保持焦点
+            textView.becomeFirstResponder()
         }
         
         // 切换文本属性
