@@ -84,8 +84,11 @@ struct RichTextEditor: UIViewRepresentable {
         // 使用Task避免在view update期间直接改变UI状态
         if shouldBecomeFirstResponder {
             Task { @MainActor in
-                textView.becomeFirstResponder()
-                context.coordinator.preventKeyboardDismiss = true
+                // 添加短暂延迟，避免与标题框焦点切换冲突
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    textView.becomeFirstResponder()
+                    context.coordinator.preventKeyboardDismiss = true
+                }
             }
         } else if shouldResignFirstResponder {
             Task { @MainActor in
@@ -300,7 +303,10 @@ struct RichTextEditor: UIViewRepresentable {
         
         // 开始编辑时的处理
         func textViewDidBeginEditing(_ textView: UITextView) {
-            parent.focus = true
+            // 确保更新焦点状态
+            DispatchQueue.main.async {
+                self.parent.focus = true
+            }
             preventKeyboardDismiss = true
             updateUndoRedoState()
         }
@@ -313,6 +319,12 @@ struct RichTextEditor: UIViewRepresentable {
                 // 确保提交最终的内容
                 parent.onCommit(parent.attributedText)
             }
+            
+            // 确保更新焦点状态
+            DispatchQueue.main.async {
+                self.parent.focus = false
+            }
+            
             updateUndoRedoState()
         }
         
@@ -942,9 +954,18 @@ struct RichTextEditor: UIViewRepresentable {
         // 添加对点击手势的处理
         @objc func handleTextViewTap(_ gesture: UITapGestureRecognizer) {
             guard let textView = gesture.view as? UITextView else { return }
+            
+            // 更新焦点状态
+            DispatchQueue.main.async {
+                self.parent.focus = true
+            }
+            
             if !textView.isFirstResponder {
                 textView.becomeFirstResponder()
             }
+            
+            // 确保富文本编辑器能够响应点击
+            preventKeyboardDismiss = true
         }
         
         // 获取当前视图控制器

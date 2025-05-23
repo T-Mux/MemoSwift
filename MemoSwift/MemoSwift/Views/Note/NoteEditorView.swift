@@ -94,6 +94,19 @@ struct NoteEditorView: View {
             // 确保每次笔记出现时重新加载最新内容
             refreshNoteContent()
             
+            // 初始化焦点状态
+            if title.isEmpty {
+                // 如果标题是空的，先让用户填写标题
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isTitleFocused = true
+                }
+            } else {
+                // 如果标题已存在，则聚焦到内容编辑器
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    focusTextEditor = true
+                }
+            }
+            
             NotificationCenter.default.addObserver(
                 forName: NSNotification.Name("RichTextEditorImageRequest"),
                 object: nil,
@@ -215,7 +228,7 @@ struct NoteEditorView: View {
     }
     
     // 标题输入框部分
-        private var titleField: some View {
+    private var titleField: some View {
         HStack {
         TextField("标题", text: $title)
             .font(.title2)
@@ -223,7 +236,8 @@ struct NoteEditorView: View {
             .focused($isTitleFocused)
             .onTapGesture {
                 isTitleFocused = true
-                focusTextEditor = false
+                // 不要立即关闭富文本编辑器焦点，让系统自然处理焦点切换
+                // focusTextEditor = false
             }
             .onChange(of: title) { _, newValue in
                 // 延迟保存，避免保存时焦点意外转移
@@ -238,7 +252,7 @@ struct NoteEditorView: View {
             .onSubmit {
                 isTitleFocused = false
                 // 延迟设置富文本焦点，避免冲突
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     focusTextEditor = true
                 }
                 // 立即保存标题变更
@@ -426,7 +440,7 @@ struct NoteEditorView: View {
     }
     
     // 富文本编辑器部分
-        private var richTextEditorSection: some View {
+    private var richTextEditorSection: some View {
         Group {
             RichTextEditor(
             attributedText: $attributedContent,
@@ -447,8 +461,17 @@ struct NoteEditorView: View {
                     debounceSave()
                 }
             }
-            // 禁止在标题获得焦点时同时获取富文本编辑器焦点
-            .allowsHitTesting(!isTitleFocused)
+            // 允许即使在标题焦点时也可以与富文本编辑器交互
+            // .allowsHitTesting(!isTitleFocused)
+            .onTapGesture {
+                if isTitleFocused {
+                    isTitleFocused = false
+                    // 短暂延迟后设置富文本编辑器焦点
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        focusTextEditor = true
+                    }
+                }
+            }
         }
     }
     
