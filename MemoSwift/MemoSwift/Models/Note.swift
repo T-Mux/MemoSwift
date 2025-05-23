@@ -134,6 +134,14 @@ extension Note {
         return request
     }
     
+    // 获取所有笔记（不包括回收站中的）
+    static func fetchAllNotes() -> NSFetchRequest<Note> {
+        let request: NSFetchRequest<Note> = Note.fetchRequest()
+        request.predicate = NSPredicate(format: "isInTrash == NO")
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Note.updatedAt, ascending: false)]
+        return request
+    }
+    
     // 添加图片到笔记
     func addImage(_ image: Image) {
         let images = self.images?.mutableCopy() as? NSMutableSet ?? NSMutableSet()

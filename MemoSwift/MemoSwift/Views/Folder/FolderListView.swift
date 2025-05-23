@@ -304,59 +304,101 @@ struct FolderListView: View {
                 }
             } else {
                 // 根目录下的文件夹列表
-                ForEach(rootFolders) { folder in
-                    // 进入文件夹
+                
+                // 添加"全部笔记"选项
+                Section {
                     Button(action: {
-                        withAnimation(.navigationPush) {
-                            folderViewModel.selectedFolder = folder
+                        print("点击了全部笔记按钮")
+                        // 添加动画效果
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            folderViewModel.showAllNotes = true
                         }
+                        print("设置showAllNotes为true")
                     }) {
-                        FolderRow(
-                            folder: folder,
-                            folderViewModel: folderViewModel,
-                            onRename: {
+                        HStack(spacing: 12) {
+                            SwiftUI.Image(systemName: "doc.text")
+                                .font(.title3)
+                                .foregroundColor(.blue)
+                                .frame(width: 25, height: 25)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("全部笔记")
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                                
+                                Text("查看所有文件夹中的笔记")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            Spacer()
+                            
+                            SwiftUI.Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.vertical, 8)
+                        .contentTransition(.interpolate)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                
+                // 文件夹区域
+                Section(header: Text("文件夹").font(.subheadline).foregroundColor(.secondary)) {
+                    ForEach(rootFolders) { folder in
+                        // 进入文件夹
+                        Button(action: {
+                            withAnimation(.navigationPush) {
+                                folderViewModel.selectedFolder = folder
+                            }
+                        }) {
+                            FolderRow(
+                                folder: folder,
+                                folderViewModel: folderViewModel,
+                                onRename: {
+                                    folderAction.setupRename(folder: folder)
+                                },
+                                onMove: {
+                                    folderAction.setupMove(
+                                        folder: folder,
+                                        availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
+                                    )
+                                },
+                                onDelete: {
+                                    folderAction.setupDelete(folder: folder)
+                                }
+                            )
+                            .contentTransition(.interpolate)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                folderAction.setupDelete(folder: folder)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                            
+                            Button {
                                 folderAction.setupRename(folder: folder)
-                            },
-                            onMove: {
+                            } label: {
+                                Label("重命名", systemImage: "pencil")
+                            }
+                            .tint(.orange)
+                            
+                            Button {
                                 folderAction.setupMove(
                                     folder: folder,
                                     availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
                                 )
-                            },
-                            onDelete: {
-                                folderAction.setupDelete(folder: folder)
+                            } label: {
+                                Label("移动", systemImage: "folder")
                             }
-                        )
-                        .contentTransition(.interpolate)
+                            .tint(.blue)
+                        }
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            folderAction.setupDelete(folder: folder)
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                        
-                        Button {
-                            folderAction.setupRename(folder: folder)
-                        } label: {
-                            Label("重命名", systemImage: "pencil")
-                        }
-                        .tint(.orange)
-                        
-                        Button {
-                            folderAction.setupMove(
-                                folder: folder,
-                                availableTargets: folderViewModel.getAvailableTargetFolders(forFolder: folder)
-                            )
-                        } label: {
-                            Label("移动", systemImage: "folder")
-                        }
-                        .tint(.blue)
-                    }
+                    .onDelete(perform: deleteFolder)
                 }
-                .onDelete(perform: deleteFolder)
             }
         }
         .listStyle(PlainListStyle())

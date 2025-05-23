@@ -16,6 +16,8 @@ class FolderViewModel: ObservableObject {
     @Published var selectedFolder: Folder?
     // 文件夹更新触发器
     @Published var folderUpdated = UUID()
+    // 是否显示全部笔记
+    @Published var showAllNotes = false
     
     init(viewContext: NSManagedObjectContext) {
         self.viewContext = viewContext
