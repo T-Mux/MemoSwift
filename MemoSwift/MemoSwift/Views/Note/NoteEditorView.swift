@@ -416,9 +416,20 @@ struct NoteEditorView: View {
     private struct TagView: View {
         let tag: Tag
         let onRemove: (Tag) -> Void
+        private func randomColor() -> Color {
+                let red = Double(arc4random_uniform(256)) / 255
+                let green = Double(arc4random_uniform(256)) / 255
+                let blue = Double(arc4random_uniform(256)) / 255
+                return Color(red: red, green: green, blue: blue)
+            }
         
         var body: some View {
             HStack(spacing: 6) {
+                // 显示颜色
+                Circle()
+                    .fill(randomColor())
+                    .frame(width: 16, height: 16)
+                
                 Text(tag.wrappedName)
                     .font(.system(size: 15))
                     .padding(.leading, 10)

@@ -266,6 +266,43 @@ struct RichTextEditor: UIViewRepresentable {
             }
         }
         
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            let pasteboard = UIPasteboard.general
+            if let image = pasteboard.image {
+                // 处理图片，调整大小
+                handleImagePaste(image: image)
+                pasteboard.image = nil
+                return false // 阻止默认的粘贴行为
+            } else {
+                return true
+            }
+        }
+            
+        private func handleImagePaste(image: UIImage) {
+            // 获取当前的图像宽度限制
+            let maxWidth = UIScreen.main.bounds.width - 32 // 留出边距
+            let scaleFactor = maxWidth / image.size.width
+            let newWidth = min(maxWidth, image.size.width)
+            let newHeight = image.size.height * scaleFactor
+            
+            // 创建图像附件
+            let attachment = NSTextAttachment()
+            attachment.image = image.resize(to: CGSize(width: newWidth, height: newHeight))
+            attachment.bounds = CGRect(x: 0, y: 0, width: newWidth, height: newHeight)
+            
+            let attrStringWithImage = NSAttributedString(attachment: attachment)
+            
+            // 在插入位置添加图像
+            let mutableAttrString = NSMutableAttributedString(attributedString: parent.attributedText)
+            let selectedRange = textView!.selectedRange
+            mutableAttrString.insert(attrStringWithImage, at: selectedRange.location)
+            parent.attributedText = mutableAttrString
+            
+            // 移动光标到图片后面
+            textView!.selectedRange = NSRange(location: selectedRange.location + 1, length: 0)
+        }
+        
+        
         @objc func handleUndo() {
             if let textView = textView {
                 if textView.undoManager?.canUndo == true {
@@ -1295,4 +1332,14 @@ extension NSAttributedString {
         // 为了性能，我们不比较详细的属性
         return true
     }
-} 
+}
+
+extension UIImage {
+    func resize(to size: CGSize) -> UIImage? {
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        draw(in: CGRect(origin: .zero, size: size))
+        let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return resizedImage
+    }
+}
